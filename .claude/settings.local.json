@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__context7__get-library-docs",
+      "Bash(mkdir:*)",
+      "Bash(curl:*)",
+      "Bash(npm install:*)",
+      "WebFetch(domain:ffmpeg.org)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
