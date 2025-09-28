@@ -13,10 +13,9 @@ export interface LanguageOption {
 
 export const languageOptions: LanguageOption[] = [
   { code: "vi", name: "Vietnamese", nativeName: "Tiếng Việt", flag: "🇻🇳" },
-  { code: "es", name: "Spanish", nativeName: "Español", flag: "🇪🇸" },
+  { code: "hi", name: "Hindi", nativeName: "हिन्दी", flag: "🇮🇳" },
   { code: "fr", name: "French", nativeName: "Français", flag: "🇫🇷" },
-  { code: "de", name: "German", nativeName: "Deutsch", flag: "🇩🇪" },
-  { code: "ja", name: "Japanese", nativeName: "日本語", flag: "🇯🇵" },
+  { code: "es", name: "Spanish", nativeName: "Español", flag: "🇪🇸" },
 ];
 
 interface LanguageSelectorProps {
@@ -57,7 +56,7 @@ export function LanguageSelector({
       >
         <Globe className="h-4 w-4 mr-2" />
         <ChevronDown className="h-4 w-4 mr-2" />
-        <span className="mr-2">{selectedOption.flag}</span>
+        <span className="mr-2 flag-emoji">{selectedOption.flag}</span>
         {selectedOption.nativeName}
       </div>
 
@@ -74,7 +73,7 @@ export function LanguageSelector({
                   selectedLanguage === option.code ? "active" : ""
                 }`}
               >
-                <span className="text-lg">{option.flag}</span>
+                <span className="text-lg flag-emoji">{option.flag}</span>
                 <div className="text-left">
                   <div className="font-medium">{option.nativeName}</div>
                   <div className="text-xs text-base-content/70">

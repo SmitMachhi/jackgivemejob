@@ -6,6 +6,20 @@
   logs: false;
 }
 
+/* Emoji font support for flag display */
+.emoji {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Emoji", "Twemoji Mozilla", "Android Emoji", sans-serif;
+}
+
+/* Ensure emoji display in language selector */
+.flag-emoji {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Emoji", "Twemoji Mozilla", "Android Emoji", sans-serif;
+  font-size: 1.2em;
+  line-height: 1;
+  display: inline-block;
+  vertical-align: middle;
+}
+
 [data-theme="alphabhai"] {
   --color-base-100: oklch(98% 0.002 247.839);
   --color-base-200: oklch(96% 0.003 264.542);

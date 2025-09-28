@@ -117,10 +117,10 @@ export const validationRules: Record<string, ValidationRule[]> = {
 
 export const languageConfigs: LanguageConfig[] = [
   {
-    code: 'en',
-    name: 'English',
+    code: 'vi',
+    name: 'Vietnamese',
     direction: 'ltr',
-    promptTemplate: `Translate the following text from {{SOURCE_LANGUAGE}} to English:
+    promptTemplate: `Dịch văn bản sau từ {{SOURCE_LANGUAGE}} sang tiếng Việt:
 
 {{SOURCE_TEXT}}
 
@@ -129,67 +129,87 @@ export const languageConfigs: LanguageConfig[] = [
 {{INDUSTRY}}
 {{MAX_TOKENS}}
 
-Provide only the translation without any additional text or explanations.`,
-    validationRules: [
-      ...validationRules.length,
-      ...validationRules.characters,
-      ...validationRules.content,
-      ...validationRules.grammar
-    ],
-    tokenLimit: 2000,
-    fallbackLanguages: ['es', 'fr'],
-    formalLevel: 'neutral',
-    culturalContext: 'Standard international English'
-  },
-
-  {
-    code: 'es',
-    name: 'Spanish',
-    direction: 'ltr',
-    promptTemplate: `Traduce el siguiente texto del {{SOURCE_LANGUAGE}} al español:
-
-{{SOURCE_TEXT}}
-
-{{CONTEXT}}
-{{STYLE}}
-{{INDUSTRY}}
-{{MAX_TOKENS}}
-
-Proporciona solo la traducción sin ningún texto adicional o explicaciones.`,
+Chỉ cung cấp bản dịch mà không có bất kỳ văn bản hoặc giải thích bổ sung nào.`,
     validationRules: [
       ...validationRules.length,
       ...validationRules.characters,
       ...validationRules.content,
       {
-        id: 'spanish-accents',
-        name: 'Spanish Accent Validation',
-        description: 'Ensures proper use of Spanish accents',
+        id: 'vietnamese-diacritics',
+        name: 'Vietnamese Diacritics Validation',
+        description: 'Ensures proper use of Vietnamese diacritics',
         severity: 'high',
         checkFunction: (translatedText: string): ValidationResult => {
-          const commonWords = ['el', 'la', 'de', 'que', 'y', 'a', 'en', 'un', 'es', 'se'];
-          const hasAccents = /[áéíóúñ]/i.test(translatedText);
-          const hasCommonWords = commonWords.some(word =>
-            translatedText.toLowerCase().includes(word)
-          );
+          const hasDiacritics = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(translatedText);
+          const hasCommonWords = translatedText.toLowerCase().includes('và') ||
+                                translatedText.toLowerCase().includes('là') ||
+                                translatedText.toLowerCase().includes('của');
 
-          if (hasCommonWords && !hasAccents && translatedText.length > 20) {
+          if (hasCommonWords && !hasDiacritics && translatedText.length > 20) {
             return {
               passed: false,
-              message: 'Spanish translation may be missing accents',
-              suggestions: ['Review for missing accents in Spanish words'],
-              id: 'spanish-accents',
-              name: 'Spanish Accent Validation',
-              description: 'Ensures proper use of Spanish accents'
+              message: 'Vietnamese translation may be missing diacritics',
+              suggestions: ['Review for missing diacritics in Vietnamese words'],
+              id: 'vietnamese-diacritics',
+              name: 'Vietnamese Diacritics Validation',
+              description: 'Ensures proper use of Vietnamese diacritics'
             };
           }
-          return { passed: true, id: 'spanish-accents', name: 'Spanish Accent Validation', description: 'Spanish accent validation passed' };
+          return { passed: true, id: 'vietnamese-diacritics', name: 'Vietnamese Diacritics Validation', description: 'Vietnamese diacritics validation passed' };
         }
       }
     ],
     tokenLimit: 2000,
-    fallbackLanguages: ['en', 'fr'],
+    fallbackLanguages: ['en', 'hi'],
+    formalLevel: 'neutral',
+    culturalContext: 'Standard Vietnamese with proper diacritics'
+  },
+
+  {
+    code: 'hi',
+    name: 'Hindi',
+    direction: 'ltr',
+    promptTemplate: `निम्नलिखित पाठ का {{SOURCE_LANGUAGE}} से हिंदी में अनुवाद करें:
+
+{{SOURCE_TEXT}}
+
+{{CONTEXT}}
+{{STYLE}}
+{{INDUSTRY}}
+{{MAX_TOKENS}}
+
+केवल अनुवाद प्रदान करें, कोई अतिरिक्त पाठ या स्पष्टीकरण नहीं।`,
+    validationRules: [
+      ...validationRules.length,
+      ...validationRules.characters,
+      ...validationRules.content,
+      {
+        id: 'hindi-characters',
+        name: 'Hindi Character Validation',
+        description: 'Ensures proper Hindi characters are used',
+        severity: 'critical',
+        checkFunction: (translatedText: string): ValidationResult => {
+          const hindiCharCount = (translatedText.match(/[\u0900-\u097F]/g) || []).length;
+          const totalCharCount = translatedText.length;
+
+          if (hindiCharCount < totalCharCount * 0.5 && totalCharCount > 10) {
+            return {
+              passed: false,
+              message: 'Translation may not contain sufficient Hindi characters',
+              suggestions: ['Ensure translation uses proper Devanagari script'],
+              id: 'hindi-characters',
+              name: 'Hindi Character Validation',
+              description: 'Ensures proper Hindi characters are used'
+            };
+          }
+          return { passed: true, id: 'hindi-characters', name: 'Hindi Character Validation', description: 'Hindi character validation passed' };
+        }
+      }
+    ],
+    tokenLimit: 2000,
+    fallbackLanguages: ['en', 'vi'],
     formalLevel: 'formal',
-    culturalContext: 'Formal Spanish with proper accents and formal address'
+    culturalContext: 'Formal Hindi with proper Devanagari script and respectful address'
   },
 
   {
@@ -243,10 +263,10 @@ Fournissez uniquement la traduction sans aucun texte supplémentaire ou explicat
   },
 
   {
-    code: 'de',
-    name: 'German',
+    code: 'es',
+    name: 'Spanish',
     direction: 'ltr',
-    promptTemplate: `Übersetzen Sie den folgenden Text von {{SOURCE_LANGUAGE}} ins Deutsche:
+    promptTemplate: `Traduce el siguiente texto del {{SOURCE_LANGUAGE}} al español:
 
 {{SOURCE_TEXT}}
 
@@ -255,323 +275,40 @@ Fournissez uniquement la traduction sans aucun texte supplémentaire ou explicat
 {{INDUSTRY}}
 {{MAX_TOKENS}}
 
-Geben Sie nur die Übersetzung ohne zusätzlichen Text oder Erklärungen an.`,
+Proporciona solo la traducción sin ningún texto adicional o explicaciones.`,
     validationRules: [
       ...validationRules.length,
       ...validationRules.characters,
       ...validationRules.content,
       {
-        id: 'german-umlauts',
-        name: 'German Umlaut Validation',
-        description: 'Ensures proper use of German umlauts',
+        id: 'spanish-accents',
+        name: 'Spanish Accent Validation',
+        description: 'Ensures proper use of Spanish accents',
         severity: 'high',
         checkFunction: (translatedText: string): ValidationResult => {
-          const hasUmlauts = /[äöüß]/i.test(translatedText);
-          const hasCommonWords = translatedText.toLowerCase().includes('der') ||
-                                translatedText.toLowerCase().includes('die') ||
-                                translatedText.toLowerCase().includes('das');
+          const commonWords = ['el', 'la', 'de', 'que', 'y', 'a', 'en', 'un', 'es', 'se'];
+          const hasAccents = /[áéíóúñ]/i.test(translatedText);
+          const hasCommonWords = commonWords.some(word =>
+            translatedText.toLowerCase().includes(word)
+          );
 
-          if (hasCommonWords && !hasUmlauts && translatedText.length > 20) {
+          if (hasCommonWords && !hasAccents && translatedText.length > 20) {
             return {
               passed: false,
-              message: 'German translation may be missing umlauts',
-              suggestions: ['Review for missing umlauts in German words'],
-              id: 'german-umlauts',
-              name: 'German Umlaut Validation',
-              description: 'Ensures proper use of German umlauts'
+              message: 'Spanish translation may be missing accents',
+              suggestions: ['Review for missing accents in Spanish words'],
+              id: 'spanish-accents',
+              name: 'Spanish Accent Validation',
+              description: 'Ensures proper use of Spanish accents'
             };
           }
-          return { passed: true, id: 'german-umlauts', name: 'German Umlaut Validation', description: 'German umlaut validation passed' };
+          return { passed: true, id: 'spanish-accents', name: 'Spanish Accent Validation', description: 'Spanish accent validation passed' };
         }
       }
     ],
     tokenLimit: 2000,
-    fallbackLanguages: ['en'],
+    fallbackLanguages: ['en', 'fr'],
     formalLevel: 'formal',
-    culturalContext: 'Formal German with proper capitalization and grammar'
-  },
-
-  {
-    code: 'zh',
-    name: 'Chinese',
-    direction: 'ltr',
-    promptTemplate: `将以下文本从{{SOURCE_LANGUAGE}}翻译成中文：
-
-{{SOURCE_TEXT}}
-
-{{CONTEXT}}
-{{STYLE}}
-{{INDUSTRY}}
-{{MAX_TOKENS}}
-
-只提供翻译，不要提供任何额外的文本或解释。`,
-    validationRules: [
-      ...validationRules.length,
-      ...validationRules.characters,
-      ...validationRules.content,
-      {
-        id: 'chinese-characters',
-        name: 'Chinese Character Validation',
-        description: 'Ensures proper Chinese characters are used',
-        severity: 'critical',
-        checkFunction: (translatedText: string): ValidationResult => {
-          const chineseCharCount = (translatedText.match(/[\u4e00-\u9fff]/g) || []).length;
-          const totalCharCount = translatedText.length;
-
-          if (chineseCharCount < totalCharCount * 0.5 && totalCharCount > 10) {
-            return {
-              passed: false,
-              message: 'Translation may not contain sufficient Chinese characters',
-              suggestions: ['Ensure translation uses proper Chinese characters'],
-              id: 'chinese-characters',
-              name: 'Chinese Character Validation',
-              description: 'Ensures proper Chinese characters are used'
-            };
-          }
-          return { passed: true, id: 'chinese-characters', name: 'Chinese Character Validation', description: 'Chinese character validation passed' };
-        }
-      }
-    ],
-    tokenLimit: 1500,
-    fallbackLanguages: ['en'],
-    formalLevel: 'neutral',
-    culturalContext: 'Standard Chinese with simplified characters'
-  },
-
-  {
-    code: 'ja',
-    name: 'Japanese',
-    direction: 'ltr',
-    promptTemplate: `次のテキストを{{SOURCE_LANGUAGE}}から日本語に翻訳してください：
-
-{{SOURCE_TEXT}}
-
-{{CONTEXT}}
-{{STYLE}}
-{{INDUSTRY}}
-{{MAX_TOKENS}}
-
-追加のテキストや説明を含めず、翻訳のみを提供してください。`,
-    validationRules: [
-      ...validationRules.length,
-      ...validationRules.characters,
-      ...validationRules.content,
-      {
-        id: 'japanese-characters',
-        name: 'Japanese Character Validation',
-        description: 'Ensures proper Japanese characters are used',
-        severity: 'critical',
-        checkFunction: (translatedText: string): ValidationResult => {
-          const japaneseCharCount = (translatedText.match(/[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/g) || []).length;
-          const totalCharCount = translatedText.length;
-
-          if (japaneseCharCount < totalCharCount * 0.3 && totalCharCount > 10) {
-            return {
-              passed: false,
-              message: 'Translation may not contain sufficient Japanese characters',
-              suggestions: ['Ensure translation uses proper Japanese characters (hiragana, katakana, kanji)'],
-              id: 'japanese-characters',
-              name: 'Japanese Character Validation',
-              description: 'Ensures proper Japanese characters are used'
-            };
-          }
-          return { passed: true, id: 'japanese-characters', name: 'Japanese Character Validation', description: 'Japanese character validation passed' };
-        }
-      }
-    ],
-    tokenLimit: 1500,
-    fallbackLanguages: ['en', 'zh'],
-    formalLevel: 'formal',
-    culturalContext: 'Formal Japanese with proper honorifics'
-  },
-
-  {
-    code: 'ko',
-    name: 'Korean',
-    direction: 'ltr',
-    promptTemplate: `다음 텍스트를 {{SOURCE_LANGUAGE}}에서 한국어로 번역하세요:
-
-{{SOURCE_TEXT}}
-
-{{CONTEXT}}
-{{STYLE}}
-{{INDUSTRY}}
-{{MAX_TOKENS}}
-
-추가 텍스트나 설명 없이 번역만 제공하세요.`,
-    validationRules: [
-      ...validationRules.length,
-      ...validationRules.characters,
-      ...validationRules.content,
-      {
-        id: 'korean-characters',
-        name: 'Korean Character Validation',
-        description: 'Ensures proper Korean characters are used',
-        severity: 'critical',
-        checkFunction: (translatedText: string): ValidationResult => {
-          const koreanCharCount = (translatedText.match(/[\uac00-\ud7af]/g) || []).length;
-          const totalCharCount = translatedText.length;
-
-          if (koreanCharCount < totalCharCount * 0.5 && totalCharCount > 10) {
-            return {
-              passed: false,
-              message: 'Translation may not contain sufficient Korean characters',
-              suggestions: ['Ensure translation uses proper Korean characters (Hangul)'],
-              id: 'korean-characters',
-              name: 'Korean Character Validation',
-              description: 'Ensures proper Korean characters are used'
-            };
-          }
-          return { passed: true, id: 'korean-characters', name: 'Korean Character Validation', description: 'Korean character validation passed' };
-        }
-      }
-    ],
-    tokenLimit: 1500,
-    fallbackLanguages: ['en', 'ja'],
-    formalLevel: 'formal',
-    culturalContext: 'Formal Korean with proper honorifics'
-  },
-
-  {
-    code: 'ar',
-    name: 'Arabic',
-    direction: 'rtl',
-    promptTemplate: `ترجم النص التالي من {{SOURCE_LANGUAGE}} إلى العربية:
-
-{{SOURCE_TEXT}}
-
-{{CONTEXT}}
-{{STYLE}}
-{{INDUSTRY}}
-{{MAX_TOKENS}}
-
-قدم فقط الترجمة دون أي نص إضافي أو شروحات.`,
-    validationRules: [
-      ...validationRules.length,
-      ...validationRules.characters,
-      ...validationRules.content,
-      {
-        id: 'arabic-script',
-        name: 'Arabic Script Validation',
-        description: 'Ensures proper Arabic script is used',
-        severity: 'critical',
-        checkFunction: (translatedText: string): ValidationResult => {
-          const arabicCharCount = (translatedText.match(/[\u0600-\u06ff]/g) || []).length;
-          const totalCharCount = translatedText.length;
-
-          if (arabicCharCount < totalCharCount * 0.7 && totalCharCount > 10) {
-            return {
-              passed: false,
-              message: 'Translation may not contain sufficient Arabic characters',
-              suggestions: ['Ensure translation uses proper Arabic script'],
-              id: 'arabic-script',
-              name: 'Arabic Script Validation',
-              description: 'Ensures proper Arabic script is used'
-            };
-          }
-          return { passed: true, id: 'arabic-script', name: 'Arabic Script Validation', description: 'Arabic script validation passed' };
-        }
-      }
-    ],
-    tokenLimit: 1500,
-    fallbackLanguages: ['en'],
-    formalLevel: 'formal',
-    culturalContext: 'Formal Arabic with proper script and cultural sensitivity'
-  },
-
-  {
-    code: 'ru',
-    name: 'Russian',
-    direction: 'ltr',
-    promptTemplate: `Переведите следующий текст с {{SOURCE_LANGUAGE}} на русский:
-
-{{SOURCE_TEXT}}
-
-{{CONTEXT}}
-{{STYLE}}
-{{INDUSTRY}}
-{{MAX_TOKENS}}
-
-Предоставьте только перевод без дополнительного текста или пояснений.`,
-    validationRules: [
-      ...validationRules.length,
-      ...validationRules.characters,
-      ...validationRules.content,
-      {
-        id: 'cyrillic-characters',
-        name: 'Cyrillic Character Validation',
-        description: 'Ensures proper Cyrillic characters are used',
-        severity: 'critical',
-        checkFunction: (translatedText: string): ValidationResult => {
-          const cyrillicCharCount = (translatedText.match(/[\u0400-\u04ff]/g) || []).length;
-          const totalCharCount = translatedText.length;
-
-          if (cyrillicCharCount < totalCharCount * 0.5 && totalCharCount > 10) {
-            return {
-              passed: false,
-              message: 'Translation may not contain sufficient Cyrillic characters',
-              suggestions: ['Ensure translation uses proper Cyrillic script'],
-              id: 'cyrillic-characters',
-              name: 'Cyrillic Character Validation',
-              description: 'Ensures proper Cyrillic characters are used'
-            };
-          }
-          return { passed: true, id: 'cyrillic-characters', name: 'Cyrillic Character Validation', description: 'Cyrillic character validation passed' };
-        }
-      }
-    ],
-    tokenLimit: 2000,
-    fallbackLanguages: ['en'],
-    formalLevel: 'formal',
-    culturalContext: 'Formal Russian with proper Cyrillic script'
-  },
-
-  {
-    code: 'vi',
-    name: 'Vietnamese',
-    direction: 'ltr',
-    promptTemplate: `Dịch văn bản sau từ {{SOURCE_LANGUAGE}} sang tiếng Việt:
-
-{{SOURCE_TEXT}}
-
-{{CONTEXT}}
-{{STYLE}}
-{{INDUSTRY}}
-{{MAX_TOKENS}}
-
-Chỉ cung cấp bản dịch mà không có bất kỳ văn bản hoặc giải thích bổ sung nào.`,
-    validationRules: [
-      ...validationRules.length,
-      ...validationRules.characters,
-      ...validationRules.content,
-      {
-        id: 'vietnamese-diacritics',
-        name: 'Vietnamese Diacritics Validation',
-        description: 'Ensures proper use of Vietnamese diacritics',
-        severity: 'high',
-        checkFunction: (translatedText: string): ValidationResult => {
-          const hasDiacritics = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(translatedText);
-          const hasCommonWords = translatedText.toLowerCase().includes('và') ||
-                                translatedText.toLowerCase().includes('là') ||
-                                translatedText.toLowerCase().includes('của');
-
-          if (hasCommonWords && !hasDiacritics && translatedText.length > 20) {
-            return {
-              passed: false,
-              message: 'Vietnamese translation may be missing diacritics',
-              suggestions: ['Review for missing diacritics in Vietnamese words'],
-              id: 'vietnamese-diacritics',
-              name: 'Vietnamese Diacritics Validation',
-              description: 'Ensures proper use of Vietnamese diacritics'
-            };
-          }
-          return { passed: true, id: 'vietnamese-diacritics', name: 'Vietnamese Diacritics Validation', description: 'Vietnamese diacritics validation passed' };
-        }
-      }
-    ],
-    tokenLimit: 2000,
-    fallbackLanguages: ['en'],
-    formalLevel: 'neutral',
-    culturalContext: 'Standard Vietnamese with proper diacritics'
+    culturalContext: 'Formal Spanish with proper accents and formal address'
   }
 ];
