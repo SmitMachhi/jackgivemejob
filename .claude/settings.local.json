@@ -5,7 +5,9 @@
       "Bash(mkdir:*)",
       "Bash(curl:*)",
       "Bash(npm install:*)",
-      "WebFetch(domain:ffmpeg.org)"
+      "WebFetch(domain:ffmpeg.org)",
+      "WebSearch",
+      "Bash(vercel:*)"
     ],
     "deny": [],
     "ask": []
