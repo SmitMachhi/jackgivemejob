@@ -110,12 +110,11 @@ export default function TimelinePanel({ file, videoUrl, processingStatus }: Time
           </div>
         </div>
 
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div
-            className="bg-primary h-2 rounded-full transition-all duration-200"
-            style={{ width: `${progressPercentage}%` }}
-          ></div>
-        </div>
+        <progress
+          className="progress progress-primary w-full"
+          value={progressPercentage}
+          max="100"
+        ></progress>
       </div>
 
       {processingStatus === 'Done' && (

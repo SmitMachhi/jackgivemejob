@@ -7,6 +7,7 @@ import PageHeader from "./components/PageHeader";
 import VideoProcessingSection from "./components/VideoProcessingSection";
 import EventLogDrawer from "./components/EventLogDrawer";
 import EventLogToggle from "./components/EventLogToggle";
+import { LanguageSelector } from "./components/LanguageSelector";
 import { useFileState } from "./hooks/useFileState";
 import { useUploadHandlers } from "./hooks/useUploadHandlers";
 import { useProcessingLogic } from "./hooks/useProcessingLogic";
@@ -16,10 +17,12 @@ export default function Home() {
     isDragOver,
     selectedFile,
     videoUrl,
+    selectedLanguage,
+    setSelectedLanguage,
     setIsDragOver,
     handleFileSelected,
     handleFileDeleted,
-    resetAll
+    resetAll,
   } = useFileState();
 
   const {
@@ -28,7 +31,7 @@ export default function Home() {
     processingStatus,
     handleCancelUpload,
     handleRenderSubtitles,
-    resetProcessing
+    resetProcessing,
   } = useProcessingLogic();
 
   const [isEventLogOpen, setIsEventLogOpen] = useState(false);
@@ -38,36 +41,47 @@ export default function Home() {
     onFileDeleted: () => {
       handleFileDeleted();
       resetProcessing();
-    }
+    },
   });
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
       <PageHeader />
       <ConstraintsBanner />
-      <UploadZone
-        isDragOver={isDragOver}
-        selectedFile={selectedFile}
-        fileInputRef={uploadHandlers.fileInputRef}
-        onDragOver={(e) => {
-          uploadHandlers.handleDragOver(e);
-          setIsDragOver(true);
-        }}
-        onDragLeave={(e) => {
-          uploadHandlers.handleDragLeave(e);
-          setIsDragOver(false);
-        }}
-        onDrop={(e) => {
-          uploadHandlers.handleDrop(e);
-          setIsDragOver(false);
-        }}
-        onFileSelect={uploadHandlers.handleFileSelect}
-        onClick={uploadHandlers.handleClickUpload}
-        onDeleteFile={uploadHandlers.handleDeleteFile}
-        uploadProgress={uploadProgress}
-        isUploading={isUploading}
-        onCancelUpload={handleCancelUpload}
-      />
+      <div className="flex gap-6 mb-6">
+        <div className="flex-1">
+          <UploadZone
+            isDragOver={isDragOver}
+            selectedFile={selectedFile}
+            fileInputRef={uploadHandlers.fileInputRef}
+            onDragOver={(e) => {
+              uploadHandlers.handleDragOver(e);
+              setIsDragOver(true);
+            }}
+            onDragLeave={(e) => {
+              uploadHandlers.handleDragLeave(e);
+              setIsDragOver(false);
+            }}
+            onDrop={(e) => {
+              uploadHandlers.handleDrop(e);
+              setIsDragOver(false);
+            }}
+            onFileSelect={uploadHandlers.handleFileSelect}
+            onClick={uploadHandlers.handleClickUpload}
+            onDeleteFile={uploadHandlers.handleDeleteFile}
+            uploadProgress={uploadProgress}
+            isUploading={isUploading}
+            onCancelUpload={handleCancelUpload}
+          />
+        </div>
+        <div className="w-48">
+          <LanguageSelector
+            selectedLanguage={selectedLanguage}
+            onLanguageChange={setSelectedLanguage}
+            className="w-full"
+          />
+        </div>
+      </div>
 
       {selectedFile && videoUrl && (
         <VideoProcessingSection
@@ -85,8 +99,8 @@ export default function Home() {
       <EventLogToggle
         processingStatus={processingStatus}
         onToggle={() => setIsEventLogOpen(!isEventLogOpen)}
-        eventCount={processingStatus === 'Done' ? 16 : undefined}
-        hasWarnings={processingStatus === 'Done'}
+        eventCount={processingStatus === "Done" ? 16 : undefined}
+        hasWarnings={processingStatus === "Done"}
         hasErrors={false}
       />
 

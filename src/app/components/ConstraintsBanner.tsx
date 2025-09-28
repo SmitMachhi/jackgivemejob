@@ -2,7 +2,7 @@
 
 export default function ConstraintsBanner() {
   return (
-    <div className="alert alert-info mb-6">
+    <div className="alert alert-info mb-6 bg-neutral">
       <svg
         xmlns="http://www.w3.org/2000/svg"
         fill="none"

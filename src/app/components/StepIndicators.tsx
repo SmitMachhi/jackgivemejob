@@ -101,11 +101,12 @@ export default function StepIndicators({ processingStatus, uploadProgress, isUpl
                 </div>
                 <p className="text-xs text-secondary">{step.description}</p>
                 {isInProgress && step.id === 'upload' && uploadProgress !== null && (
-                  <div className="mt-1 w-full bg-gray-200 rounded-full h-1">
-                    <div
-                      className="bg-primary h-1 rounded-full transition-all duration-300"
-                      style={{ width: `${uploadProgress}%` }}
-                    ></div>
+                  <div className="mt-1">
+                    <progress
+                      className="progress progress-primary w-full h-1"
+                      value={uploadProgress}
+                      max="100"
+                    ></progress>
                   </div>
                 )}
               </div>

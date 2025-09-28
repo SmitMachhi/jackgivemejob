@@ -188,7 +188,7 @@ export default function ValidationChecks({ processingStatus }: ValidationChecksP
 
   const getSeverityBadge = (severity?: string) => {
     if (!severity) return null;
-    const color = severity === 'critical' ? 'bg-error' : severity === 'high' ? 'bg-orange-500' : severity === 'medium' ? 'bg-warning' : 'bg-info';
+    const color = severity === 'critical' ? 'bg-error' : severity === 'high' ? 'bg-warning' : severity === 'medium' ? 'bg-warning' : 'bg-info';
     return (
       <span className={`text-xs px-2 py-1 rounded ${color} text-white`}>
         {severity.charAt(0).toUpperCase() + severity.slice(1)}

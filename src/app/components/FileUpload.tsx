@@ -72,56 +72,26 @@ export default function FileUpload({
         type="file"
         accept={acceptedTypes}
         onChange={handleFileSelect}
-        className="hidden"
+        className="file-input file-input-bordered file-input-primary w-full"
         disabled={uploading}
       />
 
-      <div
-        onClick={triggerFileInput}
-        className={`
-          border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer
-          hover:border-blue-400 transition-colors
-          ${uploading ? 'opacity-50 cursor-not-allowed' : ''}
-        `}
-      >
-        {uploading ? (
-          <div className="space-y-2">
-            <div className="text-sm text-gray-600">
-              Uploading... {progress}%
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
+      {uploading && (
+        <div className="mt-4 space-y-2">
+          <div className="text-sm text-secondary text-center">
+            Uploading... {progress}%
           </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="text-gray-400">
-              <svg className="mx-auto h-12 w-12" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                <path
-                  d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
-            <div className="text-sm text-gray-600">
-              <span className="font-medium text-blue-600">Click to upload</span> or drag and drop
-            </div>
-            <div className="text-xs text-gray-500">
-              {acceptedTypes !== '*/*' && `Accepted: ${acceptedTypes}`}
-              {maxSize && ` • Max size: ${maxSize}MB`}
-            </div>
-          </div>
-        )}
-      </div>
+          <progress
+            className="progress progress-primary w-full"
+            value={progress}
+            max="100"
+          ></progress>
+        </div>
+      )}
 
       {error && (
-        <div className="mt-2 text-sm text-red-600">
-          {error}
+        <div className="alert alert-error mt-2">
+          <span>{error}</span>
         </div>
       )}
     </div>

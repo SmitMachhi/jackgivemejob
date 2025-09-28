@@ -7,7 +7,16 @@
       "Bash(npm install:*)",
       "WebFetch(domain:ffmpeg.org)",
       "WebSearch",
-      "Bash(vercel:*)"
+      "Bash(vercel:*)",
+      "Read(//c/Users/Smitm/AppData/Roaming/Cursor/User/**)",
+      "Bash(tree:*)",
+      "mcp__trigger__search_docs",
+      "WebFetch(domain:trigger.dev)",
+      "Bash(npm run trigger:whoami:*)",
+      "Bash(npm run trigger:dev:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npm run lint)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []
