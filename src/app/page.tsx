@@ -90,7 +90,8 @@ export default function Home() {
           processingStatus={processingStatus}
           isUploading={isUploading}
           uploadProgress={uploadProgress}
-          onRenderSubtitles={handleRenderSubtitles}
+          selectedLanguage={selectedLanguage}
+          onRenderSubtitles={() => handleRenderSubtitles(selectedFile, selectedLanguage)}
           onReset={resetAll}
         />
       )}

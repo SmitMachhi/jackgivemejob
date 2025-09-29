@@ -514,6 +514,21 @@ export class FontManager {
         fallbackChain: ['Microsoft YaHei', 'SimSun', 'sans-serif']
       },
       {
+        name: 'Noto Sans Devanagari',
+        displayName: 'Noto Sans Devanagari',
+        category: 'sans-serif',
+        weights: [400, 700],
+        styles: ['normal'],
+        languages: ['hi'],
+        unicodeRanges: ['Devanagari', 'Latin'],
+        characterCoverage: 0.99,
+        fileFormats: ['woff2', 'woff'],
+        source: 'google',
+        url: 'https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap',
+        loadingStrategy: 'swap',
+        fallbackChain: ['Noto Sans', 'Arial', 'sans-serif']
+      },
+      {
         name: 'Source Han Sans',
         displayName: 'Source Han Sans',
         category: 'sans-serif',
@@ -789,6 +804,29 @@ export class FontManager {
           font: 'Noto Sans SC',
           url: 'https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300..700&display=swap',
           reason: 'Comprehensive simplified Chinese character support'
+        }
+      },
+      {
+        languageCode: 'hi',
+        languageName: 'Hindi',
+        direction: 'ltr',
+        script: 'Devanagari',
+        primaryFonts: ['Noto Sans Devanagari', 'Noto Sans'],
+        secondaryFonts: ['Arial', 'sans-serif'],
+        fallbackFonts: ['sans-serif'],
+        systemFonts: ['Arial'],
+        recommendedWeights: [400, 700],
+        recommendedStyles: ['normal'],
+        specialConsiderations: {
+          requiresSpecialRendering: true,
+          characterComplexity: 'complex',
+          lineHeightAdjustment: 1.6,
+          letterSpacingAdjustment: 0
+        },
+        googleFontsRecommendation: {
+          font: 'Noto Sans Devanagari',
+          url: 'https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap',
+          reason: 'Comprehensive Devanagari script support with proper vowel marking'
         }
       },
       {

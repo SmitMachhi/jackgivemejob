@@ -30,7 +30,7 @@ interface FontConfig {
 // Language-specific font configurations
 const FONT_CONFIGS: Record<string, FontConfig> = {
   en: {
-    fontFamily: "NotoSans",
+    fontFamily: "NotoSans-Regular",
     fallbackFonts: ["Roboto", "Arial", "sans-serif"],
     fontSize: 24,
     fontColor: "white",
@@ -40,7 +40,7 @@ const FONT_CONFIGS: Record<string, FontConfig> = {
     position: { x: "(w-tw)/2", y: "h-th-20" }
   },
   es: {
-    fontFamily: "NotoSans",
+    fontFamily: "NotoSans-Regular",
     fallbackFonts: ["OpenSans", "Roboto", "Arial"],
     fontSize: 24,
     fontColor: "white",
@@ -50,7 +50,7 @@ const FONT_CONFIGS: Record<string, FontConfig> = {
     position: { x: "(w-tw)/2", y: "h-th-20" }
   },
   fr: {
-    fontFamily: "NotoSans",
+    fontFamily: "NotoSans-Regular",
     fallbackFonts: ["OpenSans", "Roboto", "Arial"],
     fontSize: 24,
     fontColor: "white",
@@ -59,18 +59,19 @@ const FONT_CONFIGS: Record<string, FontConfig> = {
     shadowColor: "black@0.5",
     position: { x: "(w-tw)/2", y: "h-th-20" }
   },
-  de: {
-    fontFamily: "NotoSans",
-    fallbackFonts: ["SourceSansPro", "Roboto", "Arial"],
-    fontSize: 24,
+  hi: {
+    fontFamily: "NotoSansDevanagari-Regular",
+    fallbackFonts: ["NotoSans-Regular", "Arial", "sans-serif"],
+    fontSize: 26,
     fontColor: "white",
     backgroundColor: "black@0.7",
     outlineColor: "black@0.8",
     shadowColor: "black@0.5",
-    position: { x: "(w-tw)/2", y: "h-th-20" }
+    position: { x: "(w-tw)/2", y: "h-th-20" },
+    complexScript: true
   },
   vi: {
-    fontFamily: "NotoSans",
+    fontFamily: "NotoSans-Regular",
     fallbackFonts: ["OpenSans", "Roboto", "Arial"],
     fontSize: 22,
     fontColor: "white",
@@ -257,7 +258,8 @@ export const videoProcessingTask = task({
         await renderService.addEvent(
           validatedInput.jobId,
           'job_progress',
-          'processing',
+          'rendering',
+          'rendering',
           {
             type: 'video_processing_started',
             inputVideo: validatedInput.inputVideoPath,
@@ -319,7 +321,8 @@ export const videoProcessingTask = task({
           await renderService.addEvent(
             validatedInput.jobId,
             'job_progress',
-            'processing',
+            'rendering',
+            'rendering',
             {
               type: 'font_selection_completed',
               fontFamily: fontConfig.fontFamily,
@@ -355,7 +358,8 @@ export const videoProcessingTask = task({
           await renderService.addEvent(
             validatedInput.jobId,
             'job_progress',
-            'processing',
+            'rendering',
+            'rendering',
             {
               type: 'font_selection_failed',
               error: fontError instanceof Error ? fontError.message : fontError,
@@ -391,7 +395,8 @@ export const videoProcessingTask = task({
           await renderService.addEvent(
             validatedInput.jobId,
             'job_progress',
-            'processing',
+            'rendering',
+            'rendering',
             {
               type: 'video_metadata_failed',
               error: error instanceof Error ? error.message : error,
@@ -428,7 +433,8 @@ export const videoProcessingTask = task({
             await renderService.addEvent(
               validatedInput.jobId,
               'job_progress',
-              'processing',
+              'rendering',
+              'rendering',
               {
                 type: 'video_processing_attempt',
                 attempt,
@@ -476,7 +482,8 @@ export const videoProcessingTask = task({
             await renderService.addEvent(
               validatedInput.jobId,
               'job_progress',
-              'processing',
+              'rendering',
+              'rendering',
               {
                 type: 'video_processing_retry',
                 attempt,
@@ -564,7 +571,8 @@ export const videoProcessingTask = task({
         await renderService.addEvent(
           validatedInput.jobId,
           'job_progress',
-          'processing',
+          'rendering',
+          'rendering',
           {
             type: 'video_processing_completed',
             result: {
@@ -609,7 +617,8 @@ export const videoProcessingTask = task({
         await renderService.addEvent(
           payload.jobId,
           'job_progress',
-          'processing',
+          'failed',
+          'failed',
           {
             type: 'video_processing_failed',
             error: error instanceof Error ? error.message : error,
@@ -669,7 +678,7 @@ async function getVideoMetadata(filePath: string): Promise<{
   });
 }
 
-// Helper function to process video with captions
+// Helper function to process video with captions using FFmpeg drawtext
 async function processVideoWithCaptions(
   inputPath: string,
   outputPath: string,
@@ -685,114 +694,192 @@ async function processVideoWithCaptions(
       reject(new Error('Video processing timed out'));
     }, 600000); // 10 minutes timeout
 
+    // Validate input file exists
+    fs.access(inputPath).catch(() => {
+      clearTimeout(timeout);
+      reject(new Error(`Input video file not found: ${inputPath}`));
+      return;
+    });
+
     // Build FFmpeg command
     let command = ffmpeg(inputPath);
 
-    // Add complex filter for captions
-    const filters: string[] = [];
+    try {
+      // Add complex filter for captions using drawtext
+      const filters: string[] = [];
 
-    // Generate subtitle file with font information
-    const subtitleContent = generateSubtitleFile(captions, fontConfig);
-    const subtitlePath = path.join(path.dirname(outputPath), 'captions.ass');
+      // Process captions with language-specific rendering
+      const captionFilters = captions.map((caption, index) => {
+        const escapedText = escapeFFmpegText(caption.text);
+        const safeArea = calculateSafeArea(fontConfig, escapedText);
 
-    // Write subtitle file
-    fs.writeFile(subtitlePath, subtitleContent).then(() => {
-      // Add subtitle filter
-      filters.push(`subtitles=${subtitlePath}:force_style='Fontname=${fontConfig.fontFamily},Fontsize=${fontConfig.fontSize},PrimaryColour=${convertColor(fontConfig.fontColor)},OutlineColour=${convertColor(fontConfig.outlineColor)},BackColour=${convertColor(fontConfig.backgroundColor)}'`);
+        // Draw background box
+        const drawboxFilter = `drawbox=x=${safeArea.x}:y=${safeArea.y}:w=${safeArea.width}:h=${safeArea.height}:color=${fontConfig.backgroundColor}:t=max`;
+
+        // Draw text with font-specific settings
+        const drawtextFilter = `drawtext=text='${escapedText}':fontfile=/fonts/${fontConfig.fontFamily}.ttf:fontsize=${fontConfig.fontSize}:fontcolor=${fontConfig.fontColor}:x=${safeArea.textX}:y=${safeArea.textY}:enable='between(t,${caption.startTime},${caption.endTime})'`;
+
+        // Add outline if specified
+        let finalFilter = `${drawboxFilter},${drawtextFilter}`;
+        if (fontConfig.outlineColor && fontConfig.outlineColor !== 'none') {
+          finalFilter += `,drawtext=text='${escapedText}':fontfile=/fonts/${fontConfig.fontFamily}.ttf:fontsize=${fontConfig.fontSize}:fontcolor=${fontConfig.outlineColor}:x=${safeArea.textX + 1}:y=${safeArea.textY + 1}:enable='between(t,${caption.startTime},${caption.endTime})'`;
+        }
+
+        return finalFilter;
+      });
+
+      // Add caption filters
+      filters.push(...captionFilters);
 
       // Add watermark if requested
       if (addWatermark && watermarkText) {
-        filters.push(`drawtext=text='${watermarkText}':fontfile=/fonts/NotoSans-Regular.ttf:fontsize=16:fontcolor=white@0.5:x=10:y=10`);
+        filters.push(`drawtext=text='${escapeFFmpegText(watermarkText)}':fontfile=/fonts/NotoSans-Regular.ttf:fontsize=16:fontcolor=white@0.5:x=10:y=10`);
       }
 
       // Apply filters
       command.videoFilters(filters.join(','));
 
-      // Set quality options
-      const qualityOptions = getQualityOptions(quality);
-      command.outputOptions(qualityOptions);
+      // Set encoding options
+      const encodingOptions = getEncodingOptions(quality, preserveAudio);
+      command.outputOptions(encodingOptions);
 
-      // Set audio codec if preserving audio
-      if (preserveAudio) {
-        command.audioCodec('aac');
-      }
+    } catch (error) {
+      clearTimeout(timeout);
+      reject(new Error(`Failed to build FFmpeg command: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      return;
+    }
 
-      // Handle output
-      command
-        .on('error', (err: any) => {
-          clearTimeout(timeout);
-          reject(new Error(`FFmpeg error: ${err.message}`));
-        })
-        .on('end', () => {
-          clearTimeout(timeout);
-          // Clean up subtitle file
-          fs.unlink(subtitlePath).catch(() => {});
-          resolve(outputPath);
-        })
-        .save(outputPath);
-    }).catch(reject);
+    // Handle output with enhanced error handling
+    command
+      .on('start', (commandLine: string) => {
+        console.log('FFmpeg command started:', commandLine);
+      })
+      .on('progress', (progress: any) => {
+        console.log(`Processing: ${progress.percent}% done`);
+      })
+      .on('error', (err: any) => {
+        clearTimeout(timeout);
+
+        // Enhanced error handling
+        let errorMessage = `FFmpeg error: ${err.message}`;
+
+        // Check for specific FFmpeg errors
+        if (err.message.includes('Permission denied')) {
+          errorMessage = 'Permission denied - check file permissions';
+        } else if (err.message.includes('No such file')) {
+          errorMessage = 'Font file not found - check font paths';
+        } else if (err.message.includes('Invalid data')) {
+          errorMessage = 'Invalid video data - check input file format';
+        } else if (err.message.includes('Encoder')) {
+          errorMessage = 'Encoder error - check codec support';
+        }
+
+        console.error('FFmpeg processing failed:', errorMessage);
+        reject(new Error(errorMessage));
+      })
+      .on('end', () => {
+        clearTimeout(timeout);
+
+        // Verify output file exists and has content
+        fs.access(outputPath)
+          .then(() => fs.stat(outputPath))
+          .then(stats => {
+            if (stats.size === 0) {
+              reject(new Error('Output file is empty - processing failed'));
+            } else {
+              console.log(`Video processing completed successfully. Output size: ${stats.size} bytes`);
+              resolve(outputPath);
+            }
+          })
+          .catch(err => {
+            reject(new Error(`Output file verification failed: ${err instanceof Error ? err.message : 'Unknown error'}`));
+          });
+      })
+      .save(outputPath);
   });
 }
 
-// Helper function to generate subtitle file
-function generateSubtitleFile(captions: CaptionSegment[], fontConfig: FontConfig): string {
-  const lines = [
-    '[V4+ Styles]',
-    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Default,${fontConfig.fontFamily},${fontConfig.fontSize},${convertColor(fontConfig.fontColor)},&H000000FF,${convertColor(fontConfig.outlineColor)},${convertColor(fontConfig.backgroundColor)},0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1`,
-    '[Events]',
-    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'
+// Helper function to calculate safe area for text
+function calculateSafeArea(fontConfig: FontConfig, text: string): {
+  x: string;
+  y: string;
+  width: string;
+  height: string;
+  textX: string;
+  textY: string;
+} {
+  // Estimate text dimensions based on font size and character count
+  const charWidth = fontConfig.fontSize * 0.6; // Approximate character width
+  const charHeight = fontConfig.fontSize * 1.2; // Line height
+  const textWidth = Math.max(text.length * charWidth, 200); // Minimum width
+  const textHeight = charHeight;
+
+  // Calculate padding based on language complexity
+  const padding = fontConfig.complexScript ? 20 : 10;
+
+  // Position based on language and text direction
+  let x, y;
+  if (fontConfig.rtl) {
+    // Right-to-left languages
+    x = `w-${textWidth + padding}`;
+  } else {
+    // Left-to-right languages (centered)
+    x = `(w-${textWidth})/2`;
+  }
+
+  // Vertical positioning (bottom with safe area)
+  y = `h-${textHeight + padding * 2}`;
+
+  // Text position within the box
+  const textX = fontConfig.rtl ? `w-${textWidth + padding/2}` : `(w-${textWidth})/2`;
+  const textY = `h-${textHeight + padding}`;
+
+  return {
+    x,
+    y,
+    width: `${textWidth + padding * 2}`,
+    height: `${textHeight + padding * 2}`,
+    textX,
+    textY
+  };
+}
+
+// Helper function to escape text for FFmpeg
+function escapeFFmpegText(text: string): string {
+  return text
+    .replace(/\\/g, '\\\\\\\\')  // Escape backslashes
+    .replace(/'/g, "\\\\'")          // Escape single quotes
+    .replace(/:/g, '\\:')                // Escape colons
+    .replace(/\n/g, '\\\\n')           // Escape newlines
+    .replace(/\r/g, '\\\\r')           // Escape carriage returns
+    .replace(/\t/g, '\\\\t')           // Escape tabs
+    .replace(/%/g, '\\\\%')             // Escape percent signs
+    .replace(/\[/g, '\\\\[')           // Escape brackets
+    .replace(/\]/g, '\\\\]')           // Escape brackets
+    .replace(/\{/g, '\\\\{')           // Escape braces
+    .replace(/\}/g, '\\\\}')           // Escape braces
+    .trim();
+}
+
+// Helper function to get encoding options
+function getEncodingOptions(quality: string, preserveAudio: boolean): string[] {
+  const videoOptions = [
+    '-c:v', 'libx264',
+    '-crf', '23',
+    '-preset', 'medium',
+    '-movflags', '+faststart'
   ];
 
-  captions.forEach(caption => {
-    const start = formatTime(caption.startTime);
-    const end = formatTime(caption.endTime);
-    const text = caption.text.replace(/\n/g, '\\N');
-    lines.push(`Dialogue: 0,${start},${end},Default,,0,0,0,,${text}`);
-  });
+  const audioOptions = preserveAudio ? [
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-ar', '44100'
+  ] : ['-an'];
 
-  return lines.join('\n');
+  return [...videoOptions, ...audioOptions];
 }
 
-// Helper function to convert color to ASS format
-function convertColor(color: string): string {
-  if (color.includes('@')) {
-    const [baseColor, alpha] = color.split('@');
-    const alphaValue = Math.round(parseFloat(alpha) * 255);
-    return `&H${alphaValue.toString(16).padStart(2, '0')}${hexToBGR(baseColor)}`;
-  }
-  return `&HFF${hexToBGR(color)}`;
-}
-
-// Helper function to convert hex color to BGR format
-function hexToBGR(hex: string): string {
-  const cleanHex = hex.replace('#', '');
-  const r = parseInt(cleanHex.substring(0, 2), 16);
-  const g = parseInt(cleanHex.substring(2, 4), 16);
-  const b = parseInt(cleanHex.substring(4, 6), 16);
-  return `${b.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${r.toString(16).padStart(2, '0')}`;
-}
-
-// Helper function to format time for subtitles
-function formatTime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-  const cents = Math.floor((seconds % 1) * 100);
-
-  return `${hours.toString().padStart(1, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${cents.toString().padStart(2, '0')}`;
-}
-
-// Helper function to get quality options
+// Helper function to get quality options (legacy support)
 function getQualityOptions(quality: string): string[] {
-  switch (quality) {
-    case 'low':
-      return ['-crf', '28', '-preset', 'fast', '-tune', 'fastdecode'];
-    case 'medium':
-      return ['-crf', '23', '-preset', 'medium'];
-    case 'high':
-      return ['-crf', '18', '-preset', 'slow', '-tune', 'film'];
-    default:
-      return ['-crf', '23', '-preset', 'medium'];
-  }
+  return getEncodingOptions(quality, true);
 }

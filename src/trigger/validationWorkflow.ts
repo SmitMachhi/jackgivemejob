@@ -23,6 +23,7 @@ export const ValidationWorkflowSchema = z.object({
   maxFileSize: z.number().positive().default(50 * 1024 * 1024), // 50MB max
   languageDetectionEnabled: z.boolean().default(true),
   skipRenderOnValidationFailure: z.boolean().default(true),
+  targetLanguage: z.enum(["vi", "hi", "fr", "es"]).default("vi"),
 });
 
 export type ValidationWorkflowInput = z.infer<typeof ValidationWorkflowSchema>;
@@ -140,6 +141,7 @@ export const validationWorkflow = task({
             }
           },
           format: validatedInput.format,
+          targetLanguage: validatedInput.targetLanguage,
           options: {
             ...validatedInput.options,
             validation: validation.ok ? validation.output : null
@@ -284,6 +286,7 @@ export const validationAndRenderWorkflow = task({
         templateId: validatedInput.templateId,
         data: validatedInput.data,
         format: validatedInput.format,
+        targetLanguage: validatedInput.targetLanguage,
         options: validatedInput.options,
         priority: validatedInput.priority,
         webhookUrl: validatedInput.webhookUrl,

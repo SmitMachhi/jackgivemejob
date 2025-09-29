@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { renderService } from '@/lib/services/render-service';
-import { languageOptions } from '@/app/components/LanguageSelector';
+import { LanguageSpecificValidators } from '@/lib/validation/language-validators';
+import { writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
+import { existsSync } from 'fs';
+import { BlobStorage } from '@/lib/blob-storage';
+
+// Language options directly defined to avoid import issues
+const languageOptions = [
+  { code: "vi", name: "Vietnamese", nativeName: "Tiếng Việt", flag: "🇻🇳" },
+  { code: "hi", name: "Hindi", nativeName: "हिन्दी", flag: "🇮🇳" },
+  { code: "fr", name: "French", nativeName: "Français", flag: "🇫🇷" },
+  { code: "es", name: "Spanish", nativeName: "Español", flag: "🇪🇸" },
+];
 
 // Language-specific validation rules
 const LANGUAGE_VALIDATION_RULES = {
@@ -9,35 +21,48 @@ const LANGUAGE_VALIDATION_RULES = {
     maxFileSize: 50 * 1024 * 1024, // 50MB
     supportedFormats: ['mp4', 'webm', 'mov', 'avi'],
     characterLimit: 2000,
-    subtitleStyle: 'bottom'
+    subtitleStyle: 'bottom',
+    validation: {
+      diacritics: true,
+      syllableStructure: true,
+      toneDistribution: true
+    }
   },
-  es: {
-    maxDuration: 15,
-    maxFileSize: 60 * 1024 * 1024, // 60MB
-    supportedFormats: ['mp4', 'webm', 'mov'],
-    characterLimit: 2500,
-    subtitleStyle: 'bottom'
+  hi: {
+    maxDuration: 12,
+    maxFileSize: 55 * 1024 * 1024, // 55MB
+    supportedFormats: ['mp4', 'webm', 'mov', 'avi'],
+    characterLimit: 1800,
+    subtitleStyle: 'bottom',
+    validation: {
+      devanagariScript: true,
+      aksharaStructure: true,
+      characterComposition: true
+    }
   },
   fr: {
     maxDuration: 12,
     maxFileSize: 55 * 1024 * 1024, // 55MB
     supportedFormats: ['mp4', 'webm', 'mov', 'avi'],
     characterLimit: 2200,
-    subtitleStyle: 'bottom'
+    subtitleStyle: 'bottom',
+    validation: {
+      accents: true,
+      punctuation: true,
+      guillemets: true
+    }
   },
-  de: {
-    maxDuration: 14,
-    maxFileSize: 58 * 1024 * 1024, // 58MB
+  es: {
+    maxDuration: 15,
+    maxFileSize: 60 * 1024 * 1024, // 60MB
     supportedFormats: ['mp4', 'webm', 'mov'],
-    characterLimit: 2400,
-    subtitleStyle: 'bottom'
-  },
-  ja: {
-    maxDuration: 8, // Japanese needs shorter duration due to character density
-    maxFileSize: 45 * 1024 * 1024, // 45MB
-    supportedFormats: ['mp4', 'webm', 'mov'],
-    characterLimit: 1500, // Japanese characters take more space
-    subtitleStyle: 'top' // Japanese subtitles typically at top
+    characterLimit: 2500,
+    subtitleStyle: 'bottom',
+    validation: {
+      accents: true,
+      invertedPunctuation: true,
+      punctuationMatching: true
+    }
   }
 };
 
@@ -124,6 +149,9 @@ function validateLanguageSpecificRules(
     }
   }
 
+  // Apply language-specific validation - skip filename validation as it's not relevant for language content
+  // Language validation should be applied to the actual content, not the filename
+
   return {
     isValid: errors.length === 0,
     errors
@@ -132,10 +160,12 @@ function validateLanguageSpecificRules(
 
 export async function POST(request: NextRequest) {
   try {
-    const body: RenderRequestBody = await request.json();
+    const formData = await request.formData();
+    const file = formData.get('file') as File;
+    const targetLanguage = formData.get('targetLanguage') as string || 'vi';
 
     // Validate target language
-    const languageValidation = validateTargetLanguage(body.targetLanguage || 'vi');
+    const languageValidation = validateTargetLanguage(targetLanguage);
     if (!languageValidation.isValid) {
       return NextResponse.json(
         {
@@ -147,10 +177,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Basic validation
+    if (!file) {
+      return NextResponse.json(
+        {
+          error: 'No file provided',
+          code: 'NO_FILE_PROVIDED'
+        },
+        { status: 400 }
+      );
+    }
+
+    // Create validation object for language-specific rules
+    const validation = {
+      fileName: file.name,
+      fileSize: file.size,
+      mimeType: file.type
+    };
+
     // Apply language-specific validation rules
     const languageSpecificValidation = validateLanguageSpecificRules(
-      body.targetLanguage || 'vi',
-      body.validation
+      targetLanguage,
+      validation
     );
 
     if (!languageSpecificValidation.isValid) {
@@ -158,8 +206,8 @@ export async function POST(request: NextRequest) {
         {
           error: 'Language-specific validation failed',
           details: languageSpecificValidation.errors,
-          language: body.targetLanguage,
-          validationRules: LANGUAGE_VALIDATION_RULES[body.targetLanguage as keyof typeof LANGUAGE_VALIDATION_RULES]
+          language: targetLanguage,
+          validationRules: LANGUAGE_VALIDATION_RULES[targetLanguage as keyof typeof LANGUAGE_VALIDATION_RULES]
         },
         { status: 400 }
       );
@@ -167,21 +215,152 @@ export async function POST(request: NextRequest) {
 
     // Add language-specific options to the job
     const renderInput = {
-      ...body,
-      targetLanguage: body.targetLanguage || 'vi',
+      templateId: 'video-render',
+      data: {
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type,
+        targetLanguage
+      },
+      format: 'video' as const,
+      targetLanguage,
+      validation,
       options: {
-        ...body.options,
-        languageRules: LANGUAGE_VALIDATION_RULES[body.targetLanguage as keyof typeof LANGUAGE_VALIDATION_RULES]
+        languageRules: LANGUAGE_VALIDATION_RULES[targetLanguage as keyof typeof LANGUAGE_VALIDATION_RULES]
       }
     };
 
     const job = await renderService.createJob(renderInput);
 
+    // First, upload the file to Blob storage
+    console.log('Uploading file to Blob storage...', { fileName: file.name, fileSize: file.size });
+    const fileBuffer = Buffer.from(await file.arrayBuffer());
+    const blobUploadResult = await BlobStorage.uploadAuto(fileBuffer, `${job.id}_${file.name}`);
+
+    console.log('File uploaded to Blob storage', {
+      url: blobUploadResult.url,
+      downloadUrl: blobUploadResult.downloadUrl,
+      pathname: blobUploadResult.pathname
+    });
+
+    // Also save a local copy for fallback
+    const uploadsDir = join(process.cwd(), 'public', 'uploads', job.id);
+    if (!existsSync(uploadsDir)) {
+      await mkdir(uploadsDir, { recursive: true });
+    }
+    const localFilePath = join(uploadsDir, file.name);
+    await writeFile(localFilePath, fileBuffer);
+
+    // Add a small delay to ensure job is properly saved before returning
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Trigger the actual workflow for processing with download configuration
+    try {
+      const workflowPayload = {
+        jobId: job.id,
+        templateId: 'video-render',
+        data: {
+          ...renderInput.data,
+          fileName: validation.fileName,
+          mimeType: validation.mimeType,
+          blobUrl: blobUploadResult.downloadUrl, // Add blob URL for download task
+          localFilePath: `/uploads/${job.id}/${file.name}` // Local fallback
+        },
+        format: 'video',
+        options: {
+          languageRules: LANGUAGE_VALIDATION_RULES[targetLanguage as keyof typeof LANGUAGE_VALIDATION_RULES],
+          targetLanguage
+        },
+        targetLanguage,
+        timeout: 300,
+        // Configure download task
+        downloadConfig: {
+          enabled: true,
+          url: blobUploadResult.downloadUrl,
+          filename: file.name,
+          maxRetries: 3,
+          timeout: 60,
+          validateContentType: true
+        }
+      };
+
+      const workflowResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/workflows/render`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(workflowPayload),
+      });
+
+      if (!workflowResponse.ok) {
+        const errorData = await workflowResponse.json();
+        console.error('Failed to trigger workflow:', errorData);
+
+        // Don't fail the job creation, just log the error
+        // The job will be created but the workflow won't run
+        await renderService.addEvent(
+          job.id,
+          'job_failed',
+          'failed',
+          {
+            type: 'workflow_trigger_failed',
+            error: errorData.error || 'Unknown workflow trigger error',
+            workflowPayload
+          },
+          {
+            severity: 'error',
+            category: 'processing',
+            tags: ['workflow', 'trigger', 'error']
+          }
+        );
+      } else {
+        const workflowResult = await workflowResponse.json();
+        console.log('Workflow triggered successfully:', workflowResult);
+
+        // Add workflow trigger event
+        await renderService.addEvent(
+          job.id,
+          'job_progress',
+          'rendering',
+          {
+            type: 'workflow_triggered',
+            runId: workflowResult.runId,
+            taskId: workflowResult.taskId,
+            status: workflowResult.status
+          },
+          {
+            severity: 'info',
+            category: 'processing',
+            tags: ['workflow', 'trigger', 'started']
+          }
+        );
+      }
+    } catch (workflowError) {
+      console.error('Error triggering workflow:', workflowError);
+
+      // Don't fail the job creation, just log the error
+      await renderService.addEvent(
+        job.id,
+        'job_failed',
+        'failed',
+        {
+          type: 'workflow_trigger_exception',
+          error: workflowError instanceof Error ? workflowError.message : 'Unknown workflow trigger exception'
+        },
+        {
+          severity: 'error',
+          category: 'processing',
+          tags: ['workflow', 'trigger', 'exception']
+        }
+      );
+    }
+
     return NextResponse.json({
       message: 'Render job created successfully',
+      jobId: job.id,
       job,
-      language: body.targetLanguage,
-      validationRules: LANGUAGE_VALIDATION_RULES[body.targetLanguage as keyof typeof LANGUAGE_VALIDATION_RULES]
+      language: targetLanguage,
+      validationRules: LANGUAGE_VALIDATION_RULES[targetLanguage as keyof typeof LANGUAGE_VALIDATION_RULES]
     });
   } catch (error) {
     return NextResponse.json(

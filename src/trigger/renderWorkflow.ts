@@ -1,7 +1,26 @@
 import { task, wait } from "@trigger.dev/sdk";
 import { z } from "zod";
-import { renderService, RenderInput, JobEvent } from "@/lib/services/render-service";
+import {
+  renderService,
+  RenderInput,
+  JobEvent,
+} from "@/lib/services/render-service";
 import { languageOptions } from "@/app/components/LanguageSelector";
+import {
+  transcribeEnTask,
+  type TranscribeEnInput,
+  type TranscriptionResult,
+} from "./transcribeEn";
+import {
+  generateMultiLanguageCaptions,
+  type CaptionAgentInput,
+  type CaptionResult,
+} from "./captionAgent";
+import {
+  videoProcessingTask,
+  type VideoProcessingInput,
+  type VideoProcessingOutput,
+} from "./videoProcessing";
 
 // Language-specific configuration
 const LANGUAGE_CONFIG = {
@@ -11,29 +30,29 @@ const LANGUAGE_CONFIG = {
       minTimeoutInMs: 2000,
       maxTimeoutInMs: 30000,
       factor: 2,
-      randomize: true
+      randomize: true,
     },
     timeout: 300,
     validationRules: {
       maxDuration: 10,
       maxFileSize: 50 * 1024 * 1024,
-      supportedFormats: ["mp4", "webm", "mov", "avi"]
-    }
-  },
-  es: {
-    retry: {
-      maxAttempts: 3,
-      minTimeoutInMs: 2500,
-      maxTimeoutInMs: 35000,
-      factor: 2,
-      randomize: true
+      supportedFormats: ["mp4", "webm", "mov", "avi"],
     },
-    timeout: 360,
+  },
+  hi: {
+    retry: {
+      maxAttempts: 4,
+      minTimeoutInMs: 3000,
+      maxTimeoutInMs: 40000,
+      factor: 2,
+      randomize: true,
+    },
+    timeout: 420,
     validationRules: {
-      maxDuration: 15,
-      maxFileSize: 60 * 1024 * 1024,
-      supportedFormats: ["mp4", "webm", "mov"]
-    }
+      maxDuration: 12,
+      maxFileSize: 55 * 1024 * 1024,
+      supportedFormats: ["mp4", "webm", "mov", "avi"],
+    },
   },
   fr: {
     retry: {
@@ -41,45 +60,30 @@ const LANGUAGE_CONFIG = {
       minTimeoutInMs: 2200,
       maxTimeoutInMs: 32000,
       factor: 2,
-      randomize: true
+      randomize: true,
     },
     timeout: 330,
     validationRules: {
       maxDuration: 12,
       maxFileSize: 55 * 1024 * 1024,
-      supportedFormats: ["mp4", "webm", "mov", "avi"]
-    }
-  },
-  de: {
-    retry: {
-      maxAttempts: 4,
-      minTimeoutInMs: 2800,
-      maxTimeoutInMs: 38000,
-      factor: 2,
-      randomize: true
+      supportedFormats: ["mp4", "webm", "mov", "avi"],
     },
-    timeout: 390,
-    validationRules: {
-      maxDuration: 14,
-      maxFileSize: 58 * 1024 * 1024,
-      supportedFormats: ["mp4", "webm", "mov"]
-    }
   },
-  ja: {
+  es: {
     retry: {
-      maxAttempts: 4,
-      minTimeoutInMs: 3000,
-      maxTimeoutInMs: 40000,
+      maxAttempts: 3,
+      minTimeoutInMs: 2500,
+      maxTimeoutInMs: 35000,
       factor: 2,
-      randomize: true
+      randomize: true,
     },
-    timeout: 420,
+    timeout: 360,
     validationRules: {
-      maxDuration: 8,
-      maxFileSize: 45 * 1024 * 1024,
-      supportedFormats: ["mp4", "webm", "mov"]
-    }
-  }
+      maxDuration: 15,
+      maxFileSize: 60 * 1024 * 1024,
+      supportedFormats: ["mp4", "webm", "mov"],
+    },
+  },
 };
 
 // Input validation schema for the render workflow
@@ -87,23 +91,26 @@ export const RenderWorkflowSchema = z.object({
   jobId: z.string().uuid("Job ID must be a valid UUID").optional(),
   templateId: z.string().optional(),
   data: z.record(z.any()).default({}),
-  format: z.enum(["pdf", "html", "image"]).default("pdf"),
+  format: z.enum(["pdf", "html", "image", "video"]).default("pdf"),
   options: z.record(z.any()).optional().default({}),
   priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"),
   webhookUrl: z.string().url("Webhook URL must be valid").optional(),
   timeout: z.number().positive().min(30).max(3600).default(300), // 5 minutes default
   retryAttempts: z.number().min(0).max(5).default(2),
   // Language support
-  targetLanguage: z.enum(["vi", "es", "fr", "de", "ja"]).default("vi"),
+  targetLanguage: z.enum(["vi", "hi", "fr", "es"]).default("vi"),
   // Download configuration
-  downloadConfig: z.object({
-    enabled: z.boolean().default(false),
-    url: z.string().url().optional(),
-    filename: z.string().optional(),
-    maxRetries: z.number().min(0).max(10).default(3),
-    timeout: z.number().positive().min(5).max(300).default(60),
-    validateContentType: z.boolean().default(true),
-  }).optional().default({ enabled: false }),
+  downloadConfig: z
+    .object({
+      enabled: z.boolean().default(false),
+      url: z.string().url().optional(),
+      filename: z.string().optional(),
+      maxRetries: z.number().min(0).max(10).default(3),
+      timeout: z.number().positive().min(5).max(300).default(60),
+      validateContentType: z.boolean().default(true),
+    })
+    .optional()
+    .default({ enabled: false }),
 });
 
 export type RenderWorkflowInput = z.infer<typeof RenderWorkflowSchema>;
@@ -124,24 +131,35 @@ export const RenderWorkflowOutputSchema = z.object({
 export type RenderWorkflowOutput = z.infer<typeof RenderWorkflowOutputSchema>;
 
 // Helper function to validate language-specific constraints
-function validateLanguageConstraints(input: RenderWorkflowInput): { isValid: boolean; errors: string[] } {
+function validateLanguageConstraints(input: RenderWorkflowInput): {
+  isValid: boolean;
+  errors: string[];
+} {
   const errors: string[] = [];
-  const supportedLanguages = languageOptions.map(lang => lang.code);
+  const supportedLanguages = languageOptions.map((lang) => lang.code);
 
   // Check if language is supported
   if (!supportedLanguages.includes(input.targetLanguage)) {
-    errors.push(`Unsupported language: ${input.targetLanguage}. Supported: ${supportedLanguages.join(', ')}`);
+    errors.push(
+      `Unsupported language: ${
+        input.targetLanguage
+      }. Supported: ${supportedLanguages.join(", ")}`
+    );
   }
 
   // Check if timeout is within reasonable limits for the language
   const langConfig = LANGUAGE_CONFIG[input.targetLanguage];
   if (input.timeout > langConfig.timeout * 2) {
-    errors.push(`Timeout too long for ${input.targetLanguage}: ${input.timeout}s > ${langConfig.timeout * 2}s`);
+    errors.push(
+      `Timeout too long for ${input.targetLanguage}: ${input.timeout}s > ${
+        langConfig.timeout * 2
+      }s`
+    );
   }
 
   return {
     isValid: errors.length === 0,
-    errors
+    errors,
   };
 }
 
@@ -151,31 +169,201 @@ function getLanguageErrorMessage(language: string, errorType: string): string {
     vi: {
       timeout: "Xử lý tiếng Việt đang mất nhiều thời gian hơn dự kiến",
       validation: "Xác thực video tiếng Việt thất bại",
-      processing: "Lỗi xử lý tiếng Việt"
+      processing: "Lỗi xử lý tiếng Việt",
+      transcription: "Lỗi chuyển giọng nói tiếng Việt thành văn bản",
+      caption: "Lỗi tạo phụ đề tiếng Việt",
+      video: "Lỗi xử lý video tiếng Việt",
+      network: "Lỗi kết nối mạng khi xử lý tiếng Việt",
+      file: "Lỗi tệp tin tiếng Việt không hợp lệ",
+      format: "Lỗi định dạng video tiếng Việt không được hỗ trợ",
+      audio: "Lỗi âm thanh tiếng Việt không rõ",
+      language: "Lỗi nhận dạng ngôn ngữ tiếng Việt",
+    },
+    hi: {
+      timeout: "हिंदी प्रसंस्करण अपेक्षा से अधिक समय ले रहा है",
+      validation: "हिंदी वीडियो सत्यापन विफल",
+      processing: "हिंदी प्रसंस्करण त्रुटि",
+      transcription: "हिंदी भाषण-से-पाठ परिवर्तन त्रुटि",
+      caption: "हिंदी कैप्शन निर्माण त्रुटि",
+      video: "हिंदी वीडियो प्रसंस्करण त्रुटि",
+      network: "हिंदी प्रसंस्करण में नेटवर्क त्रुटि",
+      file: "अमान्य हिंदी फाइल त्रुटि",
+      format: "असमर्थित हिंदी वीडियो प्रारूप",
+      audio: "हिंदी ऑडियो गुणवत्ता त्रुटि",
+      language: "हिंदी भाषा पहचान त्रुटि",
     },
     es: {
       timeout: "El procesamiento en español está tardando más de lo esperado",
       validation: "La validación del video en español falló",
-      processing: "Error de procesamiento en español"
+      processing: "Error de procesamiento en español",
+      transcription: "Error en la transcripción del español",
+      caption: "Error en la generación de subtítulos en español",
+      video: "Error en el procesamiento de video en español",
+      network: "Error de red durante el procesamiento en español",
+      file: "Error de archivo español inválido",
+      format: "Formato de video español no compatible",
+      audio: "Error de audio español poco claro",
+      language: "Error de reconocimiento de idioma español",
     },
     fr: {
       timeout: "Le traitement en français prend plus de temps que prévu",
       validation: "La validation vidéo en français a échoué",
-      processing: "Erreur de traitement en français"
+      processing: "Erreur de traitement en français",
+      transcription: "Erreur de transcription française",
+      caption: "Erreur de génération de sous-titres français",
+      video: "Erreur de traitement vidéo français",
+      network: "Erreur réseau lors du traitement en français",
+      file: "Erreur de fichier français invalide",
+      format: "Format vidéo français non pris en charge",
+      audio: "Erreur audio français peu clair",
+      language: "Erreur de reconnaissance de langue française",
     },
-    de: {
-      timeout: "Die deutsche Verarbeitung dauert länger als erwartet",
-      validation: "Validierung des deutschen Videos fehlgeschlagen",
-      processing: "Fehler bei der deutschen Verarbeitung"
-    },
-    ja: {
-      timeout: "日本語の処理に予想以上に時間がかかっています",
-      validation: "日本語動画の検証に失敗しました",
-      processing: "日本語処理エラー"
-    }
   };
 
-  return messages[language as keyof typeof messages]?.[errorType as keyof typeof messages.vi] || `${errorType} error for ${language}`;
+  return (
+    messages[language as keyof typeof messages]?.[
+      errorType as keyof typeof messages.vi
+    ] || `${errorType} error for ${language}`
+  );
+}
+
+// Enhanced language-specific error handler with detailed context
+function handleLanguageSpecificError(
+  language: string,
+  errorType: string,
+  error: Error | unknown,
+  context?: {
+    jobId?: string;
+    phase?: string;
+    retryCount?: number;
+    additionalInfo?: Record<string, any>;
+  }
+): {
+  message: string;
+  severity: "low" | "medium" | "high" | "critical";
+  shouldRetry: boolean;
+} {
+  const baseMessage = getLanguageErrorMessage(language, errorType);
+  const errorMessage = error instanceof Error ? error.message : String(error);
+
+  // Determine severity based on error type and context
+  let severity: "low" | "medium" | "high" | "critical" = "medium";
+  let shouldRetry = true;
+
+  switch (errorType) {
+    case "timeout":
+      severity =
+        context?.retryCount && context.retryCount > 2 ? "high" : "medium";
+      shouldRetry = context?.retryCount ? context.retryCount < 3 : true;
+      break;
+
+    case "validation":
+      severity = "high";
+      shouldRetry = false; // Validation errors usually require user input
+      break;
+
+    case "format":
+    case "file":
+      severity = "high";
+      shouldRetry = false; // File/format errors need user intervention
+      break;
+
+    case "network":
+      severity =
+        context?.retryCount && context.retryCount > 3 ? "high" : "medium";
+      shouldRetry = context?.retryCount ? context.retryCount < 5 : true;
+      break;
+
+    case "language":
+      severity = "critical";
+      shouldRetry = false; // Language detection failures are critical
+      break;
+
+    default:
+      severity = "medium";
+      shouldRetry = true;
+  }
+
+  // Create detailed error message
+  const detailedMessage = `${baseMessage}: ${errorMessage}${
+    context?.phase ? ` (fase: ${context.phase})` : ""
+  }${context?.jobId ? ` (ID: ${context.jobId})` : ""}`;
+
+  return {
+    message: detailedMessage,
+    severity,
+    shouldRetry,
+  };
+}
+
+// Language-specific validation functions
+function validateLanguageSpecificInput(
+  language: string,
+  input: any
+): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  switch (language) {
+    case "vi":
+      // Vietnamese validation
+      if (input.fileName && !/^[\p{L}\p{N}\s\-\._]+$/u.test(input.fileName)) {
+        errors.push("Tên file tiếng Việt chứa ký tự không hợp lệ");
+      }
+      if (input.duration && input.duration > 600) {
+        errors.push("Thời lượng video tiếng Việt quá dài (tối đa 10 phút)");
+      }
+      break;
+
+    case "hi":
+      // Hindi validation
+      if (
+        input.fileName &&
+        !/^[\u0900-\u097F\p{L}\p{N}\s\-\._]+$/u.test(input.fileName)
+      ) {
+        errors.push("हिंदी फाइल नाम में अमान्य वर्ण हैं");
+      }
+      if (input.duration && input.duration > 480) {
+        errors.push("हिंदी वीडियो की अवधि बहुत लंबी है (अधिकतम 8 मिनट)");
+      }
+      break;
+
+    case "fr":
+      // French validation
+      if (
+        input.fileName &&
+        !/^[a-zA-Z0-9\s\-\._àâäçéèêëïîôùûüÿñæœÀÂÄÇÉÈÊËÏÎÔÙÛÜŸÑÆŒ]+$/.test(
+          input.fileName
+        )
+      ) {
+        errors.push(
+          "Le nom de fichier français contient des caractères invalides"
+        );
+      }
+      if (input.duration && input.duration > 900) {
+        errors.push("La vidéo française est trop longue (maximum 15 minutes)");
+      }
+      break;
+
+    case "es":
+      // Spanish validation
+      if (
+        input.fileName &&
+        !/^[a-zA-Z0-9\s\-\._áéíóúüñÁÉÍÓÚÜÑ¿¡]+$/.test(input.fileName)
+      ) {
+        errors.push(
+          "El nombre de archivo español contiene caracteres inválidos"
+        );
+      }
+      if (input.duration && input.duration > 900) {
+        errors.push("El video español es demasiado largo (máximo 15 minutos)");
+      }
+      break;
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+  };
 }
 
 /**
@@ -211,165 +399,466 @@ export const renderWorkflow = task({
       const workflowLangConfig = LANGUAGE_CONFIG[validatedInput.targetLanguage];
       console.log("Language configuration loaded", {
         targetLanguage: validatedInput.targetLanguage,
-        config: workflowLangConfig
+        config: workflowLangConfig,
       });
-
-      // Validate language-specific constraints
-      const languageValidation = validateLanguageConstraints(validatedInput);
-      if (!languageValidation.isValid) {
-        throw new Error(`Language validation failed for ${validatedInput.targetLanguage}: ${languageValidation.errors.join(', ')}`);
-      }
 
       // Step 1: Create or retrieve job with language support
       let job;
       if (validatedInput.jobId) {
         job = await renderService.getJob(validatedInput.jobId);
         if (!job) {
-          throw new Error(`Job with ID ${validatedInput.jobId} not found`);
+          console.log(
+            `Job with ID ${validatedInput.jobId} not found, creating new job instead`
+          );
+          // Create a new job with the provided data if the job doesn't exist
+          const renderInput: RenderInput = {
+            templateId: validatedInput.templateId || "video-render",
+            data: {
+              ...validatedInput.data,
+              targetLanguage: validatedInput.targetLanguage,
+              languageConfig: workflowLangConfig,
+            },
+            format: validatedInput.format,
+            options: {
+              ...validatedInput.options,
+              targetLanguage: validatedInput.targetLanguage,
+              languageRules: workflowLangConfig.validationRules,
+            },
+            targetLanguage: validatedInput.targetLanguage,
+          };
+          job = await renderService.createJob(renderInput);
+          console.log("Created new job (replacing missing job)", {
+            jobId: job.id,
+            targetLanguage: validatedInput.targetLanguage,
+          });
+        } else {
+          console.log("Retrieved existing job", {
+            jobId: job.id,
+            status: job.status,
+          });
         }
-        console.log("Retrieved existing job", { jobId: job.id, status: job.status });
       } else {
         const renderInput: RenderInput = {
           templateId: validatedInput.templateId,
           data: {
             ...validatedInput.data,
             targetLanguage: validatedInput.targetLanguage,
-            languageConfig: workflowLangConfig
+            languageConfig: workflowLangConfig,
           },
           format: validatedInput.format,
           options: {
             ...validatedInput.options,
             targetLanguage: validatedInput.targetLanguage,
-            languageRules: workflowLangConfig.validationRules
+            languageRules: workflowLangConfig.validationRules,
           },
           targetLanguage: validatedInput.targetLanguage,
         };
         job = await renderService.createJob(renderInput);
-        console.log("Created new job", { jobId: job.id, targetLanguage: validatedInput.targetLanguage });
+        console.log("Created new job", {
+          jobId: job.id,
+          targetLanguage: validatedInput.targetLanguage,
+        });
       }
 
-      // Step 2: Wait for job completion with language-specific timeout
-      const langConfig = LANGUAGE_CONFIG[validatedInput.targetLanguage as keyof typeof LANGUAGE_CONFIG];
-      const effectiveTimeout = Math.min(validatedInput.timeout, langConfig.timeout);
-      const timeoutMs = effectiveTimeout * 1000;
-      const pollInterval = 2000; // 2 seconds
-      const maxAttempts = Math.floor(timeoutMs / pollInterval);
-      let attempts = 0;
+      // Validate language-specific constraints after job is created
+      const languageValidation = validateLanguageConstraints(validatedInput);
+      if (!languageValidation.isValid) {
+        const errorHandling = handleLanguageSpecificError(
+          validatedInput.targetLanguage,
+          "validation",
+          new Error(languageValidation.errors.join(", ")),
+          {
+            jobId: job.id,
+            phase: "initial_validation",
+            additionalInfo: { errors: languageValidation.errors },
+          }
+        );
+        throw new Error(errorHandling.message);
+      }
 
-      console.log("Starting job polling", {
-        jobId: job.id,
-        targetLanguage: validatedInput.targetLanguage,
-        effectiveTimeout,
-        timeoutMs,
-        maxAttempts
-      });
+      // Step 2: Download file from Blob storage if needed
+      let localFilePath = job.input.validation?.filePath || job.input.data?.filePath;
 
-      while (attempts < maxAttempts) {
-        const currentJob = await renderService.getJob(job.id);
-        if (!currentJob) {
-          const errorMsg = getLanguageErrorMessage(validatedInput.targetLanguage, "processing") + `: Job ${job.id} disappeared during processing`;
-          throw new Error(errorMsg);
-        }
-
-        console.log("Polling job status", {
+      if (job.input.downloadConfig?.enabled && job.input.downloadConfig?.url) {
+        console.log("Starting download task", {
           jobId: job.id,
-          status: currentJob.status,
-          targetLanguage: validatedInput.targetLanguage,
-          attempt: attempts + 1,
-          maxAttempts
+          downloadUrl: job.input.downloadConfig.url,
+          filename: job.input.downloadConfig.filename,
         });
 
-        // Check if job is completed or failed
-        if (currentJob.status === "completed" || currentJob.status === "failed") {
-          const duration = Date.now() - startTime;
-
-          console.log("Job finished", {
+        try {
+          const downloadPayload: DownloadTaskInput = {
+            url: job.input.downloadConfig.url,
+            filename: job.input.downloadConfig.filename || "downloaded_file",
             jobId: job.id,
-            status: currentJob.status,
-            duration,
-            hasOutput: !!currentJob.output,
-            hasError: !!currentJob.error
-          });
-
-          // Step 3: Send webhook notification if configured
-          let webhookDelivered = false;
-          let webhookResponse = null;
-
-          if (validatedInput.webhookUrl) {
-            try {
-              webhookResponse = await sendWebhook(validatedInput.webhookUrl, {
-                jobId: job.id,
-                status: currentJob.status,
-                input: currentJob.input,
-                output: currentJob.output,
-                error: currentJob.error,
-                duration,
-                targetLanguage: validatedInput.targetLanguage,
-                languageConfig: langConfig,
-                timestamp: new Date().toISOString(),
-              });
-              webhookDelivered = true;
-              console.log("Webhook delivered successfully", {
-                webhookUrl: validatedInput.webhookUrl,
-                targetLanguage: validatedInput.targetLanguage
-              });
-            } catch (webhookError) {
-              console.error("Webhook delivery failed", {
-                webhookUrl: validatedInput.webhookUrl,
-                targetLanguage: validatedInput.targetLanguage,
-                error: webhookError instanceof Error ? webhookError.message : webhookError
-              });
-            }
-          }
-
-          // Get job events
-          const eventsResult = await renderService.getJobEvents(job.id, { limit: 100 });
-
-          // Return workflow result
-          const result: RenderWorkflowOutput = {
-            jobId: job.id,
-            status: currentJob.status,
-            input: currentJob.input,
-            output: currentJob.output,
-            error: currentJob.error,
-            duration,
-            events: eventsResult.events,
-            webhookDelivered,
-            webhookResponse,
+            maxRetries: job.input.downloadConfig.maxRetries || 3,
+            timeout: job.input.downloadConfig.timeout || 60,
+            validateContentType: job.input.downloadConfig.validateContentType || false,
+            expectedContentType: job.input.validation?.mimeType || job.input.data?.mimeType,
+            saveDirectory: `downloads/${job.id}`,
+            overwriteExisting: true,
+            enableHashing: true,
+            virusScan: true,
           };
 
-          console.log("Workflow completed successfully", {
+          const downloadResponse = await downloadTask.triggerAndWait(downloadPayload);
+
+          if (!downloadResponse.ok) {
+            throw new Error(`Download failed: ${downloadResponse.error}`);
+          }
+
+          localFilePath = downloadResponse.output.filePath;
+          console.log("File downloaded successfully", {
             jobId: job.id,
-            status: result.status,
-            duration: result.duration,
-            eventsCount: result.events.length
+            localFilePath,
+            fileSize: downloadResponse.output.fileSize,
+            fileHash: downloadResponse.output.fileHash,
           });
-
-          return result;
+        } catch (error) {
+          const errorHandling = handleLanguageSpecificError(
+            validatedInput.targetLanguage,
+            "download",
+            error,
+            {
+              jobId: job.id,
+              phase: "file_download",
+              additionalInfo: {
+                downloadUrl: job.input.downloadConfig?.url,
+                error: error instanceof Error ? error.message : String(error)
+              },
+            }
+          );
+          throw new Error(errorHandling.message);
         }
-
-        // Wait before next poll using Trigger.dev wait function
-        await wait.for({ seconds: pollInterval / 1000 });
-        attempts++;
       }
 
-      // Timeout reached with language-specific error message
-      const timeoutErrorMsg = getLanguageErrorMessage(validatedInput.targetLanguage, "timeout") + `: Job ${job.id} did not complete within ${effectiveTimeout} seconds`;
-      throw new Error(timeoutErrorMsg);
+      // Step 3: Execute transcription task with language support
+      console.log("Starting transcription task", {
+        jobId: job.id,
+        targetLanguage: validatedInput.targetLanguage,
+        inputFile: localFilePath,
+      });
 
+      let transcriptionResult: TranscriptionResult;
+      try {
+        transcriptionResult = await transcribeEnTask.invoke({
+          filePath: localFilePath || "",
+          fileName:
+            job.input.validation?.fileName ||
+            job.input.data?.fileName ||
+            "video.mp4",
+          mimeType:
+            job.input.validation?.mimeType ||
+            job.input.data?.mimeType ||
+            "video/mp4",
+          jobId: job.id,
+          language: "en", // Force English for transcription
+          maxRetries: workflowLangConfig.retry.maxAttempts,
+          timeout: Math.min(workflowLangConfig.timeout, 300), // Ensure timeout doesn't exceed 300 seconds
+          temperature: 0.0,
+          responseFormat: "verbose_json",
+          timestampGranularities: ["word", "segment"],
+          enableCache: true,
+          cacheTtl: 3600,
+          enableVad: true,
+          minWordCount: 5,
+          minConfidenceScore: 0.7,
+          enableCostTracking: true,
+          maxCostLimit: 1.0,
+          languageConfidenceThreshold: 0.8,
+          enableRealtimeEvents: true,
+          retryBackoffFactor: 2,
+          retryBaseDelay: 2000,
+          enableVerboseLogging: false,
+        });
+
+        console.log("Transcription completed successfully", {
+          jobId: job.id,
+          wordCount: transcriptionResult.wordCount,
+          language: transcriptionResult.language,
+          processingTime: transcriptionResult.processingTime,
+        });
+      } catch (error) {
+        const errorHandling = handleLanguageSpecificError(
+          validatedInput.targetLanguage,
+          "transcription",
+          error,
+          {
+            jobId: job.id,
+            phase: "transcription",
+            retryCount: 0,
+            additionalInfo: {
+              filePath: localFilePath,
+              language: validatedInput.targetLanguage,
+            },
+          }
+        );
+        throw new Error(errorHandling.message);
+      }
+
+      // Step 4: Execute caption agent task with language support
+      console.log("Starting caption generation", {
+        jobId: job.id,
+        targetLanguage: validatedInput.targetLanguage,
+        transcriptionWordCount: transcriptionResult.wordCount,
+      });
+
+      let captionResult: any;
+      try {
+        const captionPayload = {
+          filePath: localFilePath || "",
+          fileName:
+            job.input.validation?.fileName ||
+            job.input.data?.fileName ||
+            "video.mp4",
+          targetLanguage: validatedInput.targetLanguage as
+            | "vi"
+            | "hi"
+            | "fr"
+            | "es",
+          sourceLanguage: "en",
+          jobId: job.id,
+          style: "neutral" as const,
+          context: "video_processing",
+          maxCaptionLength: 80,
+          enableValidation: true,
+        };
+
+        const captionResponse =
+          await generateMultiLanguageCaptions.triggerAndWait(captionPayload);
+
+        if (!captionResponse.ok) {
+          throw new Error(
+            `Caption generation failed: ${captionResponse.error}`
+          );
+        }
+
+        captionResult = captionResponse.output;
+
+        console.log("Caption generation completed successfully", {
+          jobId: job.id,
+          captionCount: captionResult.captions?.length || 0,
+          language:
+            captionResult.metadata?.language || validatedInput.targetLanguage,
+        });
+      } catch (error) {
+        const errorHandling = handleLanguageSpecificError(
+          validatedInput.targetLanguage,
+          "caption",
+          error,
+          {
+            jobId: job.id,
+            phase: "caption_generation",
+            retryCount: 0,
+            additionalInfo: {
+              language: validatedInput.targetLanguage,
+              transcriptionWordCount: transcriptionResult.wordCount,
+            },
+          }
+        );
+        throw new Error(errorHandling.message);
+      }
+
+      // Step 5: Execute video processing task with language support
+      console.log("Starting video processing", {
+        jobId: job.id,
+        targetLanguage: validatedInput.targetLanguage,
+        captionCount: captionResult.captions.length,
+      });
+
+      let videoProcessingResult: any;
+      try {
+        const videoPayload = {
+          inputVideoPath: localFilePath || "",
+          outputVideoPath: `/tmp/output_${job.id}.mp4`,
+          captions: captionResult.captions || [],
+          targetLanguage: validatedInput.targetLanguage,
+          jobId: job.id,
+          timeout: Math.min(workflowLangConfig.timeout, 300),
+          maxRetries: workflowLangConfig.retry.maxAttempts,
+          quality: "high" as "high",
+          preserveAudio: true,
+          addWatermark: false,
+          fontConfig: {
+            fontFamily:
+              validatedInput.targetLanguage === "hi"
+                ? "NotoSansDevanagari-Regular"
+                : validatedInput.targetLanguage === "vi"
+                ? "NotoSans-Regular"
+                : validatedInput.targetLanguage === "fr"
+                ? "NotoSans-Regular"
+                : validatedInput.targetLanguage === "es"
+                ? "NotoSans-Regular"
+                : "NotoSans-Regular",
+            fontSize: 24,
+            fontColor: "white",
+            backgroundColor: "black@0.7",
+            outlineColor: "black@0.8",
+            shadowColor: "black@0.5",
+            position: { x: "(w-tw)/2", y: "h-th-20" },
+          },
+        };
+
+        const videoResponse = await videoProcessingTask.triggerAndWait(
+          videoPayload
+        );
+
+        if (!videoResponse.ok) {
+          throw new Error(`Video processing failed: ${videoResponse.error}`);
+        }
+
+        videoProcessingResult = videoResponse.output;
+
+        console.log("Video processing completed successfully", {
+          jobId: job.id,
+          outputPath: videoProcessingResult.outputPath,
+          processingTime: videoProcessingResult.processingTime,
+        });
+      } catch (error) {
+        const errorHandling = handleLanguageSpecificError(
+          validatedInput.targetLanguage,
+          "video",
+          error,
+          {
+            jobId: job.id,
+            phase: "video_processing",
+            retryCount: 0,
+            additionalInfo: {
+              language: validatedInput.targetLanguage,
+              captionCount: captionResult.captions?.length || 0,
+              customFont:
+                validatedInput.targetLanguage === "hi"
+                  ? "NotoSansDevanagari-Regular"
+                  : "NotoSans-Regular",
+            },
+          }
+        );
+        throw new Error(errorHandling.message);
+      }
+
+      // Step 6: Update job with final results
+      const duration = Date.now() - startTime;
+      const finalOutput = {
+        transcription: transcriptionResult,
+        captions: captionResult,
+        videoProcessing: videoProcessingResult,
+        language: validatedInput.targetLanguage,
+        url: videoProcessingResult.outputPath,
+        downloadUrl: videoProcessingResult.outputPath,
+        previewUrl: videoProcessingResult.thumbnailPath || null,
+        metadata: {
+          processedAt: new Date(),
+          duration: videoProcessingResult.duration,
+          size: videoProcessingResult.fileSize.toString(),
+          format: "mp4",
+          resolution: videoProcessingResult.resolution,
+          quality: videoProcessingResult.quality,
+          languages: [validatedInput.targetLanguage],
+          processingStats: {
+            totalSegments: captionResult.captions?.length || 0,
+            successfulSegments: captionResult.captions?.length || 0,
+            failedSegments: 0,
+            averageConfidence: transcriptionResult.confidence || 0.8,
+          },
+        },
+      };
+
+      // Update job status to completed
+      job.status = "done";
+      job.output = finalOutput;
+      job.progress = {
+        percentage: 100,
+        currentPhase: "done",
+        phaseProgress: 100,
+        estimatedTimeRemaining: 0,
+        message: `Processing completed for ${validatedInput.targetLanguage}`,
+        stepDetails: {
+          currentStep: 4,
+          totalSteps: 4,
+          stepName: "All tasks completed successfully",
+        },
+      };
+      job.updatedAt = new Date();
+
+      // Step 7: Send webhook notification if configured
+      let webhookDelivered = false;
+      let webhookResponse = null;
+
+      if (validatedInput.webhookUrl) {
+        try {
+          webhookResponse = await sendWebhook(validatedInput.webhookUrl, {
+            jobId: job.id,
+            status: "completed",
+            input: job.input,
+            output: finalOutput,
+            error: null,
+            duration,
+            targetLanguage: validatedInput.targetLanguage,
+            languageConfig: workflowLangConfig,
+            timestamp: new Date().toISOString(),
+          });
+          webhookDelivered = true;
+          console.log("Webhook delivered successfully", {
+            webhookUrl: validatedInput.webhookUrl,
+            targetLanguage: validatedInput.targetLanguage,
+          });
+        } catch (webhookError) {
+          console.error("Webhook delivery failed", {
+            webhookUrl: validatedInput.webhookUrl,
+            targetLanguage: validatedInput.targetLanguage,
+            error:
+              webhookError instanceof Error
+                ? webhookError.message
+                : webhookError,
+          });
+        }
+      }
+
+      // Get job events
+      const eventsResult = await renderService.getJobEvents(job.id, {
+        limit: 100,
+      });
+
+      // Return workflow result
+      const result: RenderWorkflowOutput = {
+        jobId: job.id,
+        status: "completed",
+        input: job.input,
+        output: finalOutput,
+        error: undefined,
+        duration,
+        events: eventsResult.events,
+        webhookDelivered,
+        webhookResponse,
+      };
+
+      console.log("Workflow completed successfully", {
+        jobId: job.id,
+        status: result.status,
+        duration: result.duration,
+        eventsCount: result.events.length,
+        targetLanguage: validatedInput.targetLanguage,
+      });
+
+      return result;
     } catch (error) {
       const duration = Date.now() - startTime;
-      const targetLanguage = validatedInput?.targetLanguage || payload.targetLanguage || "vi";
+      const targetLanguage =
+        validatedInput?.targetLanguage || payload.targetLanguage || "vi";
       console.error("Render workflow failed", {
         error: error instanceof Error ? error.message : error,
         duration,
         targetLanguage,
-        payload
+        payload,
       });
 
       // Re-throw with language-specific error context
       const errorMsg = getLanguageErrorMessage(targetLanguage, "processing");
-      throw new Error(`${errorMsg} after ${duration}ms: ${error instanceof Error ? error.message : error}`);
+      throw new Error(
+        `${errorMsg} after ${duration}ms: ${
+          error instanceof Error ? error.message : error
+        }`
+      );
     }
   },
 });
@@ -386,7 +875,9 @@ async function sendWebhook(url: string, data: any): Promise<any> {
   });
 
   if (!response.ok) {
-    throw new Error(`Webhook failed with status ${response.status}: ${response.statusText}`);
+    throw new Error(
+      `Webhook failed with status ${response.status}: ${response.statusText}`
+    );
   }
 
   return await response.json();
@@ -402,30 +893,34 @@ export const createRenderJob = task({
     factor: 2,
     randomize: true,
   },
-  run: async (payload: {
-    templateId?: string;
-    data: Record<string, any>;
-    format?: "pdf" | "html" | "image";
-    targetLanguage?: string;
-  }, { ctx }) => {
+  run: async (
+    payload: {
+      templateId?: string;
+      data: Record<string, any>;
+      format?: "pdf" | "html" | "image";
+      targetLanguage?: string;
+    },
+    { ctx }
+  ) => {
     console.log("Creating render job", { payload });
 
     const targetLanguage = payload.targetLanguage || "vi";
-    const langConfig = LANGUAGE_CONFIG[targetLanguage as keyof typeof LANGUAGE_CONFIG];
+    const langConfig =
+      LANGUAGE_CONFIG[targetLanguage as keyof typeof LANGUAGE_CONFIG];
 
     const renderInput: RenderInput = {
       templateId: payload.templateId,
       data: {
         ...payload.data,
         targetLanguage,
-        languageConfig: langConfig
+        languageConfig: langConfig,
       },
       format: payload.format || "pdf",
       targetLanguage,
       options: {
         targetLanguage,
-        languageRules: langConfig.validationRules
-      }
+        languageRules: langConfig.validationRules,
+      },
     };
 
     const job = await renderService.createJob(renderInput);
@@ -433,7 +928,7 @@ export const createRenderJob = task({
     console.log("Render job created", {
       jobId: job.id,
       status: job.status,
-      targetLanguage
+      targetLanguage,
     });
 
     return {
@@ -441,7 +936,7 @@ export const createRenderJob = task({
       status: job.status,
       input: job.input,
       targetLanguage,
-      languageConfig: langConfig
+      languageConfig: langConfig,
     };
   },
 });
@@ -463,7 +958,8 @@ export const checkRenderJobStatus = task({
 
     if (!job) {
       const errorMsg = payload.targetLanguage
-        ? getLanguageErrorMessage(payload.targetLanguage, "processing") + `: Job with ID ${payload.jobId} not found`
+        ? getLanguageErrorMessage(payload.targetLanguage, "processing") +
+          `: Job with ID ${payload.jobId} not found`
         : `Job with ID ${payload.jobId} not found`;
       throw new Error(errorMsg);
     }
@@ -471,7 +967,7 @@ export const checkRenderJobStatus = task({
     console.log("Job status retrieved", {
       jobId: job.id,
       status: job.status,
-      targetLanguage: payload.targetLanguage || job.input.targetLanguage
+      targetLanguage: payload.targetLanguage || job.input.targetLanguage,
     });
 
     return {
@@ -492,20 +988,22 @@ export const DownloadTaskSchema = z.object({
   url: z.string().url("Invalid URL provided"),
   filename: z.string().min(1, "Filename is required").optional(),
   jobId: z.string().uuid("Job ID must be a valid UUID").optional(),
-  targetLanguage: z.enum(["vi", "es", "fr", "de", "ja"]).default("vi"),
+  targetLanguage: z.enum(["vi", "es", "fr", "hi"]).default("vi"),
   maxRetries: z.number().min(0).max(10).default(3),
   timeout: z.number().positive().min(5).max(300).default(60), // seconds
   chunkSize: z.number().positive().min(1024).max(10485760).default(524288), // 512KB default
   validateContentType: z.boolean().default(true),
-  allowedContentTypes: z.array(z.string()).default([
-    "application/pdf",
-    "text/html",
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-    "application/json",
-    "text/plain"
-  ]),
+  allowedContentTypes: z
+    .array(z.string())
+    .default([
+      "application/pdf",
+      "text/html",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "application/json",
+      "text/plain",
+    ]),
 });
 
 export type DownloadTaskInput = z.infer<typeof DownloadTaskSchema>;
@@ -561,7 +1059,7 @@ export const downloadTask = task({
       const langConfig = LANGUAGE_CONFIG[validatedInput.targetLanguage];
       console.log("Language download configuration loaded", {
         targetLanguage: validatedInput.targetLanguage,
-        config: langConfig
+        config: langConfig,
       });
 
       // Parse and validate URL
@@ -575,12 +1073,12 @@ export const downloadTask = task({
       console.log("URL validation passed", {
         url: validatedInput.url,
         hostname: parsedUrl.hostname,
-        protocol: parsedUrl.protocol
+        protocol: parsedUrl.protocol,
       });
 
       // Generate filename if not provided
       const filename = validatedInput.filename || generateFilename(parsedUrl);
-      const tempDir = process.env.TEMP_DIR || '/tmp';
+      const tempDir = process.env.TEMP_DIR || "/tmp";
       const filePath = `${tempDir}/${filename}`;
 
       console.log("Download parameters set", {
@@ -588,25 +1086,27 @@ export const downloadTask = task({
         filePath,
         tempDir,
         chunkSize: validatedInput.chunkSize,
-        timeout: validatedInput.timeout
+        timeout: validatedInput.timeout,
       });
 
       // Attempt download with language-specific retry logic
-      const result = await downloadWithRetry(
-        validatedInput.url,
-        filePath,
-        {
-          maxRetries: Math.max(validatedInput.maxRetries, langConfig.retry.maxAttempts),
-          timeout: Math.min(validatedInput.timeout * 1000, langConfig.retry.maxTimeoutInMs),
-          chunkSize: validatedInput.chunkSize,
-          validateContentType: validatedInput.validateContentType,
-          allowedContentTypes: validatedInput.allowedContentTypes,
-          logger: console,
-          jobId: validatedInput.jobId,
-          targetLanguage: validatedInput.targetLanguage,
-          retryConfig: langConfig.retry
-        }
-      );
+      const result = await downloadWithRetry(validatedInput.url, filePath, {
+        maxRetries: Math.max(
+          validatedInput.maxRetries,
+          langConfig.retry.maxAttempts
+        ),
+        timeout: Math.min(
+          validatedInput.timeout * 1000,
+          langConfig.retry.maxTimeoutInMs
+        ),
+        chunkSize: validatedInput.chunkSize,
+        validateContentType: validatedInput.validateContentType,
+        allowedContentTypes: validatedInput.allowedContentTypes,
+        logger: console,
+        jobId: validatedInput.jobId,
+        targetLanguage: validatedInput.targetLanguage,
+        retryConfig: langConfig.retry,
+      });
 
       const downloadTime = Date.now() - startTime;
 
@@ -615,28 +1115,29 @@ export const downloadTask = task({
         fileSize: result.fileSize,
         downloadTime,
         retries: result.retries,
-        filePath: result.filePath
+        filePath: result.filePath,
       });
 
       // Emit download event if jobId is provided
       if (validatedInput.jobId) {
         await renderService.addEvent(
           validatedInput.jobId,
-          'job_progress',
-          'processing',
+          "job_progress",
+          "transcribing",
+          "transcribing",
           {
-            type: 'download_completed',
+            type: "download_completed",
             filename: result.filename,
             fileSize: result.fileSize,
             downloadTime,
             retries: result.retries,
             url: validatedInput.url,
-            filePath: result.filePath
+            filePath: result.filePath,
           },
           {
-            severity: 'success',
-            category: 'processing',
-            tags: ['download', 'file_processing']
+            severity: "success",
+            category: "processing",
+            tags: ["download", "file_processing"],
           }
         );
       }
@@ -647,49 +1148,57 @@ export const downloadTask = task({
         metadata: {
           ...result.metadata,
           downloadedAt: new Date().toISOString(),
-        }
+        },
       };
-
     } catch (error) {
       const downloadTime = Date.now() - startTime;
       console.error("Download task failed", {
         error: error instanceof Error ? error.message : error,
         duration: downloadTime,
-        payload
+        payload,
       });
 
       // Emit failure event if jobId is provided
       if (payload.jobId) {
-        await renderService.addEvent(
-          payload.jobId,
-          'job_progress',
-          'processing',
-          {
-            type: 'download_failed',
-            url: payload.url,
-            error: error instanceof Error ? error.message : error,
-            downloadTime,
-            retries: payload.maxRetries
-          },
-          {
-            severity: 'error',
-            category: 'processing',
-            tags: ['download', 'error', 'failure']
-          }
-        ).catch(eventError => {
-          console.warn("Failed to emit download failure event", { eventError });
-        });
+        await renderService
+          .addEvent(
+            payload.jobId,
+            "job_progress",
+            "failed",
+            "failed",
+            {
+              type: "download_failed",
+              url: payload.url,
+              error: error instanceof Error ? error.message : error,
+              downloadTime,
+              retries: payload.maxRetries,
+            },
+            {
+              severity: "error",
+              category: "processing",
+              tags: ["download", "error", "failure"],
+            }
+          )
+          .catch((eventError) => {
+            console.warn("Failed to emit download failure event", {
+              eventError,
+            });
+          });
       }
 
-      throw new Error(`Download failed after ${downloadTime}ms: ${error instanceof Error ? error.message : error}`);
+      throw new Error(
+        `Download failed after ${downloadTime}ms: ${
+          error instanceof Error ? error.message : error
+        }`
+      );
     }
   },
 });
 
 // Helper function to validate URLs
 function isUrlAllowed(url: URL): boolean {
-  const disallowedProtocols = ['javascript:', 'data:', 'file:', 'ftp:'];
-  const disallowedHosts = ['localhost', '127.0.0.1', '0.0.0.0'];
+  const disallowedProtocols = ["javascript:", "data:", "file:", "ftp:"];
+  const disallowedHosts = ["localhost", "127.0.0.1", "0.0.0.0"];
 
   if (disallowedProtocols.includes(url.protocol)) {
     return false;
@@ -700,22 +1209,24 @@ function isUrlAllowed(url: URL): boolean {
   }
 
   // Allow HTTP/HTTPS only
-  return url.protocol === 'http:' || url.protocol === 'https:';
+  return url.protocol === "http:" || url.protocol === "https:";
 }
 
 // Helper function to generate filename from URL
 function generateFilename(url: URL): string {
   const pathname = url.pathname;
-  const basename = pathname.split('/').pop() || 'download';
+  const basename = pathname.split("/").pop() || "download";
 
   // Add extension if missing
-  if (!basename.includes('.')) {
-    const extension = url.pathname.match(/\.(jpg|jpeg|png|gif|pdf|html|txt|json)$/i)?.[1] || 'bin';
+  if (!basename.includes(".")) {
+    const extension =
+      url.pathname.match(/\.(jpg|jpeg|png|gif|pdf|html|txt|json)$/i)?.[1] ||
+      "bin";
     return `${basename}.${extension}`;
   }
 
   // Sanitize filename
-  return basename.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return basename.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
 // Download function with retry logic
@@ -740,22 +1251,35 @@ async function downloadWithRetry(
     };
   }
 ): Promise<DownloadTaskOutput> {
-  const { maxRetries, timeout, chunkSize, validateContentType, allowedContentTypes, logger, jobId, targetLanguage, retryConfig } = options;
+  const {
+    maxRetries,
+    timeout,
+    chunkSize,
+    validateContentType,
+    allowedContentTypes,
+    logger,
+    jobId,
+    targetLanguage,
+    retryConfig,
+  } = options;
   let attempt = 0;
 
   while (attempt <= maxRetries) {
     attempt++;
-    console.log(`Download attempt ${attempt}/${maxRetries + 1}`, { url, filePath });
+    console.log(`Download attempt ${attempt}/${maxRetries + 1}`, {
+      url,
+      filePath,
+    });
 
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
 
       const response = await fetch(url, {
-        method: 'GET',
+        method: "GET",
         signal: controller.signal,
         headers: {
-          'User-Agent': 'Trigger.dev-DownloadTask/1.0',
+          "User-Agent": "Trigger.dev-DownloadTask/1.0",
         },
       });
 
@@ -766,19 +1290,23 @@ async function downloadWithRetry(
       }
 
       // Validate content type if required
-      const contentType = response.headers.get('content-type')?.split(';')[0] || '';
+      const contentType =
+        response.headers.get("content-type")?.split(";")[0] || "";
       if (validateContentType && !allowedContentTypes.includes(contentType)) {
         throw new Error(`Content type not allowed: ${contentType}`);
       }
 
       // Get file size
-      const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
+      const contentLength = parseInt(
+        response.headers.get("content-length") || "0",
+        10
+      );
 
       console.log("Download request successful", {
         status: response.status,
         contentType,
         contentLength,
-        headers: Object.fromEntries(response.headers.entries())
+        headers: Object.fromEntries(response.headers.entries()),
       });
 
       // Create write stream and start download
@@ -786,7 +1314,7 @@ async function downloadWithRetry(
       const buffer = Buffer.from(arrayBuffer);
 
       // Write to file (in Node.js environment)
-      const fs = await import('fs/promises');
+      const fs = await import("fs/promises");
       await fs.writeFile(filePath, buffer);
 
       const fileSize = buffer.length;
@@ -796,54 +1324,56 @@ async function downloadWithRetry(
         fileSize,
         contentType,
         contentLength,
-        actualSize: fileSize
+        actualSize: fileSize,
       });
 
       return {
         success: true,
-        filename: filePath.split('/').pop() || 'downloaded_file',
+        filename: filePath.split("/").pop() || "downloaded_file",
         filePath,
         fileSize,
         contentType,
         downloadTime: 0, // Will be set by caller
         retries: attempt - 1,
         metadata: {
-          etag: response.headers.get('etag') || undefined,
-          lastModified: response.headers.get('last-modified') || undefined,
+          etag: response.headers.get("etag") || undefined,
+          lastModified: response.headers.get("last-modified") || undefined,
           contentLength,
           url,
           downloadedAt: new Date().toISOString(),
-        }
+        },
       };
-
     } catch (error) {
       console.error(`Download attempt ${attempt} failed`, {
         error: error instanceof Error ? error.message : error,
         url,
-        attempt
+        attempt,
       });
 
       // Emit progress event if jobId is provided
       if (jobId) {
-        await renderService.addEvent(
-          jobId,
-          'job_progress',
-          'processing',
-          {
-            type: 'download_retry',
-            url,
-            attempt,
-            maxAttempts: maxRetries + 1,
-            error: error instanceof Error ? error.message : error
-          },
-          {
-            severity: 'warning',
-            category: 'processing',
-            tags: ['download', 'retry']
-          }
-        ).catch(eventError => {
-          console.warn("Failed to emit download retry event", { eventError });
-        });
+        await renderService
+          .addEvent(
+            jobId,
+            "job_progress",
+            "transcribing",
+            "transcribing",
+            {
+              type: "download_retry",
+              url,
+              attempt,
+              maxAttempts: maxRetries + 1,
+              error: error instanceof Error ? error.message : error,
+            },
+            {
+              severity: "warning",
+              category: "processing",
+              tags: ["download", "retry"],
+            }
+          )
+          .catch((eventError) => {
+            console.warn("Failed to emit download retry event", { eventError });
+          });
       }
 
       // If this is the last attempt, re-throw the error
@@ -869,13 +1399,12 @@ async function downloadWithRetry(
         delay,
         targetLanguage,
         baseDelay,
-        maxDelay
+        maxDelay,
       });
 
       await wait.for({ seconds: delay / 1000 });
     }
   }
 
-  throw new Error('Maximum retry attempts exceeded');
+  throw new Error("Maximum retry attempts exceeded");
 }
-

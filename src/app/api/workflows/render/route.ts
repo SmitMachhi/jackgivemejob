@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       runId: handle.id,
-      taskId: handle.taskId,
+      taskId: "render-workflow",
       message: "Render workflow triggered successfully",
       status: "queued",
     });

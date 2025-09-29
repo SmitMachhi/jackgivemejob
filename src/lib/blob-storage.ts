@@ -1,4 +1,6 @@
 import { put, del, list } from "@vercel/blob";
+import { promises as fs } from "fs";
+import path from "path";
 
 export interface BlobUploadOptions {
   filename: string;
@@ -136,5 +138,74 @@ export class BlobStorage {
       contentType: this.getContentType(filename),
       cacheControlMaxAge: 31536000,
     });
+  }
+
+  /**
+   * Download file from Blob URL to local filesystem
+   */
+  static async downloadFromBlob(blobUrl: string, jobId: string): Promise<string> {
+    try {
+      // Create temporary directory for the job if it doesn't exist
+      const tempDir = path.join(process.cwd(), "temp", jobId);
+      await fs.mkdir(tempDir, { recursive: true });
+
+      // Extract filename from blob URL or generate one
+      const url = new URL(blobUrl);
+      const pathname = url.pathname;
+      const filename = path.basename(pathname) || `file_${jobId}_${Date.now()}`;
+      const filePath = path.join(tempDir, filename);
+
+      console.log("Downloading file from blob", {
+        blobUrl,
+        jobId,
+        filePath,
+      });
+
+      // Download the file
+      const response = await fetch(blobUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+      }
+
+      // Get file as buffer
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // Write to local file system
+      await fs.writeFile(filePath, buffer);
+
+      console.log("File downloaded successfully", {
+        blobUrl,
+        jobId,
+        filePath,
+        fileSize: buffer.length,
+        contentType: response.headers.get("content-type"),
+      });
+
+      return filePath;
+    } catch (error) {
+      console.error("Error downloading file from blob", {
+        blobUrl,
+        jobId,
+        error: error instanceof Error ? error.message : error,
+      });
+      throw new Error(`Failed to download file from blob: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  /**
+   * Clean up temporary files for a job
+   */
+  static async cleanupJobFiles(jobId: string): Promise<void> {
+    try {
+      const tempDir = path.join(process.cwd(), "temp", jobId);
+      await fs.rm(tempDir, { recursive: true, force: true });
+      console.log("Cleaned up job files", { jobId, tempDir });
+    } catch (error) {
+      console.warn("Failed to clean up job files", {
+        jobId,
+        error: error instanceof Error ? error.message : error,
+      });
+    }
   }
 }
