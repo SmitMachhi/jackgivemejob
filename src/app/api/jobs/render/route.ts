@@ -230,18 +230,89 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    const job = await renderService.createJob(renderInput);
+    let job;
+    try {
+      job = await renderService.createJob(renderInput);
+      console.log('Job created successfully', { jobId: job.id });
+    } catch (error) {
+      console.error('Failed to create job:', error);
+
+      // Check if this is a blob storage error (which should be non-fatal)
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isBlobError = errorMessage.includes('Vercel Blob') ||
+                         errorMessage.includes('suspended') ||
+                         errorMessage.includes('BLOB_READ_WRITE_TOKEN');
+
+      if (isBlobError) {
+        // For blob storage errors, try to create job without persistent storage
+        console.log('Blob storage unavailable, attempting to create job without persistence');
+        try {
+          // Create a fallback job object
+          job = {
+            id: crypto.randomUUID(),
+            status: 'queued' as const,
+            phase: 'queued' as const,
+            input: renderInput,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            progress: {
+              percentage: 0,
+              currentPhase: 'queued' as const,
+              phaseProgress: 0,
+              estimatedTimeRemaining: 300,
+              message: `Job queued for ${renderInput.targetLanguage || 'vi'} processing`
+            },
+            events: [],
+            metadata: {
+              processingLanguages: [renderInput.targetLanguage || 'vi'],
+              sourceLanguage: 'auto',
+              processingSteps: ['upload', 'transcribe', 'translate', 'synthesize'],
+              totalEstimatedTime: 300,
+              actualProcessingTime: 0,
+              retryCount: 0,
+              errorCount: 0,
+              warnings: [],
+              lastActivity: new Date()
+            }
+          } as any;
+          console.log('Created fallback job without persistent storage', { jobId: job.id });
+        } catch (fallbackError) {
+          console.error('Failed to create fallback job:', fallbackError);
+          return NextResponse.json(
+            { error: 'Failed to create job due to storage issues' },
+            { status: 503 }
+          );
+        }
+      } else {
+        // For non-blob errors, return a proper error response
+        return NextResponse.json(
+          { error: 'Failed to create job', details: errorMessage },
+          { status: 500 }
+        );
+      }
+    }
 
     // First, upload the file to Blob storage
     console.log('Uploading file to Blob storage...', { fileName: file.name, fileSize: file.size });
     const fileBuffer = Buffer.from(await file.arrayBuffer());
-    const blobUploadResult = await BlobStorage.uploadAuto(fileBuffer, `${job.id}_${file.name}`);
+    let blobUploadResult;
 
-    console.log('File uploaded to Blob storage', {
-      url: blobUploadResult.url,
-      downloadUrl: blobUploadResult.downloadUrl,
-      pathname: blobUploadResult.pathname
-    });
+    try {
+      blobUploadResult = await BlobStorage.uploadAuto(fileBuffer, `${job.id}_${file.name}`);
+      console.log('File uploaded to Blob storage', {
+        url: blobUploadResult.url,
+        downloadUrl: blobUploadResult.downloadUrl,
+        pathname: blobUploadResult.pathname
+      });
+    } catch (blobError) {
+      console.error('Failed to upload file to Blob storage:', blobError);
+      // Continue with local storage only - this is non-fatal
+      blobUploadResult = {
+        url: '',
+        downloadUrl: '',
+        pathname: ''
+      };
+    }
 
     // Also save a local copy for fallback
     const uploadsDir = join(process.cwd(), 'public', 'uploads', job.id);

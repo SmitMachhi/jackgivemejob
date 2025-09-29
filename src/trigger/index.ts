@@ -1,5 +1,10 @@
 // Export all tasks and types from the trigger directory
 
+// Simple video workflow
+export { simpleVideoProcess, simpleVideoStatus } from "./simpleVideoWorkflow";
+export type { SimpleVideoProcessInput, SimpleVideoProcessOutput } from "./simpleVideoWorkflow";
+export { SimpleVideoProcessSchema, SimpleVideoProcessOutputSchema } from "./simpleVideoWorkflow";
+
 // Main render workflow
 export { renderWorkflow } from "./renderWorkflow";
 export type { RenderWorkflowInput, RenderWorkflowOutput } from "./renderWorkflow";
@@ -9,9 +14,9 @@ export { RenderWorkflowSchema, RenderWorkflowOutputSchema } from "./renderWorkfl
 export { createRenderJob, checkRenderJobStatus } from "./renderWorkflow";
 
 // Download task
-export { downloadTask } from "./renderWorkflow";
-export type { DownloadTaskInput, DownloadTaskOutput } from "./renderWorkflow";
-export { DownloadTaskSchema, DownloadTaskOutputSchema } from "./renderWorkflow";
+export { downloadTask } from "./downloadTask";
+export type { DownloadTaskInput, DownloadTaskOutput } from "./downloadTask";
+export { DownloadTaskSchema, DownloadTaskOutputSchema } from "./downloadTask";
 
 // Probe input validation task
 export { probeInputTask } from "./probeInput";
@@ -57,7 +62,7 @@ export {
 export { TranscriptionError } from "./transcribeEn";
 
 // Multi-language caption agent
-export { runCaptionAgent } from "./captionAgent";
+export { runCaptionAgent, generateMultiLanguageCaptions } from "./captionAgent";
 export type {
   CaptionAgentInput,
   CaptionSegment,
@@ -69,6 +74,13 @@ export {
   CaptionResultSchema
 } from "./captionAgent";
 export { CaptionAgentError } from "./captionAgent";
+
+// Video processing task
+export { videoProcessingTask } from "./videoProcessing";
+export type {
+  VideoProcessingInput,
+  VideoProcessingOutput
+} from "./videoProcessing";
 
 // Example task
 export { helloWorldTask } from "./example";

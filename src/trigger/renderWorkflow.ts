@@ -21,6 +21,11 @@ import {
   type VideoProcessingInput,
   type VideoProcessingOutput,
 } from "./videoProcessing";
+import {
+  downloadTask,
+  type DownloadTaskInput,
+  type DownloadTaskOutput,
+} from "./downloadTask";
 
 // Language-specific configuration
 const LANGUAGE_CONFIG = {
@@ -477,9 +482,22 @@ export const renderWorkflow = task({
       }
 
       // Step 2: Download file from Blob storage if needed
-      let localFilePath = job.input.validation?.filePath || job.input.data?.filePath;
+      let localFilePath =
+        job.input.validation?.filePath ||
+        job.input.data?.filePath ||
+        job.input.data?.localFilePath;
 
-      if (job.input.downloadConfig?.enabled && job.input.downloadConfig?.url) {
+      console.log("Initial file path check", {
+        jobId: job.id,
+        validationPath: job.input.validation?.filePath,
+        dataPath: job.input.data?.filePath,
+        dataLocalPath: job.input.data?.localFilePath,
+        initialLocalFilePath: localFilePath,
+        downloadEnabled: job.input.downloadConfig?.enabled,
+        downloadUrl: job.input.downloadConfig?.url,
+      });
+
+      if (job.input.downloadConfig?.enabled && job.input.downloadConfig?.url && !localFilePath) {
         console.log("Starting download task", {
           jobId: job.id,
           downloadUrl: job.input.downloadConfig.url,
@@ -488,23 +506,21 @@ export const renderWorkflow = task({
 
         try {
           const downloadPayload: DownloadTaskInput = {
-            url: job.input.downloadConfig.url,
-            filename: job.input.downloadConfig.filename || "downloaded_file",
+            blobUrl: job.input.downloadConfig.url,
             jobId: job.id,
-            maxRetries: job.input.downloadConfig.maxRetries || 3,
+            filename: job.input.downloadConfig.filename || "downloaded_file",
             timeout: job.input.downloadConfig.timeout || 60,
-            validateContentType: job.input.downloadConfig.validateContentType || false,
-            expectedContentType: job.input.validation?.mimeType || job.input.data?.mimeType,
-            saveDirectory: `downloads/${job.id}`,
-            overwriteExisting: true,
-            enableHashing: true,
-            virusScan: true,
+            maxRetries: job.input.downloadConfig.maxRetries || 3,
           };
 
-          const downloadResponse = await downloadTask.triggerAndWait(downloadPayload);
+          const downloadResponse = await downloadTask.triggerAndWait(
+            downloadPayload
+          );
 
           if (!downloadResponse.ok) {
-            throw new Error(`Download failed: ${downloadResponse.error}`);
+            throw new Error(
+              `Download failed: ${downloadResponse.error || "Unknown error"}`
+            );
           }
 
           localFilePath = downloadResponse.output.filePath;
@@ -512,7 +528,8 @@ export const renderWorkflow = task({
             jobId: job.id,
             localFilePath,
             fileSize: downloadResponse.output.fileSize,
-            fileHash: downloadResponse.output.fileHash,
+            filename: downloadResponse.output.filename,
+            downloadTime: downloadResponse.output.downloadTime,
           });
         } catch (error) {
           const errorHandling = handleLanguageSpecificError(
@@ -524,7 +541,7 @@ export const renderWorkflow = task({
               phase: "file_download",
               additionalInfo: {
                 downloadUrl: job.input.downloadConfig?.url,
-                error: error instanceof Error ? error.message : String(error)
+                error: error instanceof Error ? error.message : String(error),
               },
             }
           );
@@ -539,10 +556,29 @@ export const renderWorkflow = task({
         inputFile: localFilePath,
       });
 
+      // Validate that we have a valid file path before proceeding
+      if (!localFilePath || localFilePath.trim() === "") {
+        const errorHandling = handleLanguageSpecificError(
+          validatedInput.targetLanguage,
+          "file",
+          new Error("No valid file path available for transcription"),
+          {
+            jobId: job.id,
+            phase: "transcription_validation",
+            additionalInfo: {
+              localFilePath,
+              jobData: job.input.data,
+              jobValidation: job.input.validation,
+            },
+          }
+        );
+        throw new Error(errorHandling.message);
+      }
+
       let transcriptionResult: TranscriptionResult;
       try {
-        transcriptionResult = await transcribeEnTask.invoke({
-          filePath: localFilePath || "",
+        const transcriptionResponse = await transcribeEnTask.triggerAndWait({
+          filePath: localFilePath,
           fileName:
             job.input.validation?.fileName ||
             job.input.data?.fileName ||
@@ -571,6 +607,16 @@ export const renderWorkflow = task({
           retryBaseDelay: 2000,
           enableVerboseLogging: false,
         });
+
+        if (!transcriptionResponse.ok) {
+          throw new Error(
+            `Transcription failed: ${
+              transcriptionResponse.error || "Unknown error"
+            }`
+          );
+        }
+
+        transcriptionResult = transcriptionResponse.output;
 
         console.log("Transcription completed successfully", {
           jobId: job.id,
@@ -629,7 +675,9 @@ export const renderWorkflow = task({
 
         if (!captionResponse.ok) {
           throw new Error(
-            `Caption generation failed: ${captionResponse.error}`
+            `Caption generation failed: ${
+              captionResponse.error || "Unknown error"
+            }`
           );
         }
 
@@ -704,7 +752,9 @@ export const renderWorkflow = task({
         );
 
         if (!videoResponse.ok) {
-          throw new Error(`Video processing failed: ${videoResponse.error}`);
+          throw new Error(
+            `Video processing failed: ${videoResponse.error || "Unknown error"}`
+          );
         }
 
         videoProcessingResult = videoResponse.output;
@@ -982,429 +1032,3 @@ export const checkRenderJobStatus = task({
     };
   },
 });
-
-// Download task schemas
-export const DownloadTaskSchema = z.object({
-  url: z.string().url("Invalid URL provided"),
-  filename: z.string().min(1, "Filename is required").optional(),
-  jobId: z.string().uuid("Job ID must be a valid UUID").optional(),
-  targetLanguage: z.enum(["vi", "es", "fr", "hi"]).default("vi"),
-  maxRetries: z.number().min(0).max(10).default(3),
-  timeout: z.number().positive().min(5).max(300).default(60), // seconds
-  chunkSize: z.number().positive().min(1024).max(10485760).default(524288), // 512KB default
-  validateContentType: z.boolean().default(true),
-  allowedContentTypes: z
-    .array(z.string())
-    .default([
-      "application/pdf",
-      "text/html",
-      "image/jpeg",
-      "image/png",
-      "image/webp",
-      "application/json",
-      "text/plain",
-    ]),
-});
-
-export type DownloadTaskInput = z.infer<typeof DownloadTaskSchema>;
-
-export const DownloadTaskOutputSchema = z.object({
-  success: z.boolean(),
-  filename: z.string(),
-  filePath: z.string(),
-  fileSize: z.number(),
-  contentType: z.string(),
-  downloadTime: z.number(),
-  retries: z.number(),
-  metadata: z.object({
-    etag: z.string().optional(),
-    lastModified: z.string().optional(),
-    contentLength: z.number().optional(),
-    url: z.string(),
-    downloadedAt: z.string(),
-  }),
-});
-
-export type DownloadTaskOutput = z.infer<typeof DownloadTaskOutputSchema>;
-
-/**
- * Download Task - Downloads files from URLs with progress tracking and retry logic
- *
- * This task handles secure file downloads with:
- * - URL validation and security checks
- * - Progress tracking and reporting
- * - Retry logic with exponential backoff
- * - Content type validation
- * - Temporary file management
- */
-export const downloadTask = task({
-  id: "download-task",
-  retry: {
-    maxAttempts: 3,
-    minTimeoutInMs: 1000,
-    maxTimeoutInMs: 30000,
-    factor: 2,
-    randomize: true,
-  },
-  run: async (payload: DownloadTaskInput, { ctx }) => {
-    const startTime = Date.now();
-    console.log("Starting download task", { payload });
-
-    try {
-      // Validate input
-      const validatedInput = DownloadTaskSchema.parse(payload);
-      console.log("Download input validated", { validatedInput });
-
-      // Get language-specific configuration for download
-      const langConfig = LANGUAGE_CONFIG[validatedInput.targetLanguage];
-      console.log("Language download configuration loaded", {
-        targetLanguage: validatedInput.targetLanguage,
-        config: langConfig,
-      });
-
-      // Parse and validate URL
-      const parsedUrl = new URL(validatedInput.url);
-
-      // Security checks
-      if (!isUrlAllowed(parsedUrl)) {
-        throw new Error(`URL not allowed: ${validatedInput.url}`);
-      }
-
-      console.log("URL validation passed", {
-        url: validatedInput.url,
-        hostname: parsedUrl.hostname,
-        protocol: parsedUrl.protocol,
-      });
-
-      // Generate filename if not provided
-      const filename = validatedInput.filename || generateFilename(parsedUrl);
-      const tempDir = process.env.TEMP_DIR || "/tmp";
-      const filePath = `${tempDir}/${filename}`;
-
-      console.log("Download parameters set", {
-        filename,
-        filePath,
-        tempDir,
-        chunkSize: validatedInput.chunkSize,
-        timeout: validatedInput.timeout,
-      });
-
-      // Attempt download with language-specific retry logic
-      const result = await downloadWithRetry(validatedInput.url, filePath, {
-        maxRetries: Math.max(
-          validatedInput.maxRetries,
-          langConfig.retry.maxAttempts
-        ),
-        timeout: Math.min(
-          validatedInput.timeout * 1000,
-          langConfig.retry.maxTimeoutInMs
-        ),
-        chunkSize: validatedInput.chunkSize,
-        validateContentType: validatedInput.validateContentType,
-        allowedContentTypes: validatedInput.allowedContentTypes,
-        logger: console,
-        jobId: validatedInput.jobId,
-        targetLanguage: validatedInput.targetLanguage,
-        retryConfig: langConfig.retry,
-      });
-
-      const downloadTime = Date.now() - startTime;
-
-      console.log("Download completed successfully", {
-        filename: result.filename,
-        fileSize: result.fileSize,
-        downloadTime,
-        retries: result.retries,
-        filePath: result.filePath,
-      });
-
-      // Emit download event if jobId is provided
-      if (validatedInput.jobId) {
-        await renderService.addEvent(
-          validatedInput.jobId,
-          "job_progress",
-          "transcribing",
-          "transcribing",
-          {
-            type: "download_completed",
-            filename: result.filename,
-            fileSize: result.fileSize,
-            downloadTime,
-            retries: result.retries,
-            url: validatedInput.url,
-            filePath: result.filePath,
-          },
-          {
-            severity: "success",
-            category: "processing",
-            tags: ["download", "file_processing"],
-          }
-        );
-      }
-
-      return {
-        ...result,
-        downloadTime,
-        metadata: {
-          ...result.metadata,
-          downloadedAt: new Date().toISOString(),
-        },
-      };
-    } catch (error) {
-      const downloadTime = Date.now() - startTime;
-      console.error("Download task failed", {
-        error: error instanceof Error ? error.message : error,
-        duration: downloadTime,
-        payload,
-      });
-
-      // Emit failure event if jobId is provided
-      if (payload.jobId) {
-        await renderService
-          .addEvent(
-            payload.jobId,
-            "job_progress",
-            "failed",
-            "failed",
-            {
-              type: "download_failed",
-              url: payload.url,
-              error: error instanceof Error ? error.message : error,
-              downloadTime,
-              retries: payload.maxRetries,
-            },
-            {
-              severity: "error",
-              category: "processing",
-              tags: ["download", "error", "failure"],
-            }
-          )
-          .catch((eventError) => {
-            console.warn("Failed to emit download failure event", {
-              eventError,
-            });
-          });
-      }
-
-      throw new Error(
-        `Download failed after ${downloadTime}ms: ${
-          error instanceof Error ? error.message : error
-        }`
-      );
-    }
-  },
-});
-
-// Helper function to validate URLs
-function isUrlAllowed(url: URL): boolean {
-  const disallowedProtocols = ["javascript:", "data:", "file:", "ftp:"];
-  const disallowedHosts = ["localhost", "127.0.0.1", "0.0.0.0"];
-
-  if (disallowedProtocols.includes(url.protocol)) {
-    return false;
-  }
-
-  if (disallowedHosts.includes(url.hostname)) {
-    return false;
-  }
-
-  // Allow HTTP/HTTPS only
-  return url.protocol === "http:" || url.protocol === "https:";
-}
-
-// Helper function to generate filename from URL
-function generateFilename(url: URL): string {
-  const pathname = url.pathname;
-  const basename = pathname.split("/").pop() || "download";
-
-  // Add extension if missing
-  if (!basename.includes(".")) {
-    const extension =
-      url.pathname.match(/\.(jpg|jpeg|png|gif|pdf|html|txt|json)$/i)?.[1] ||
-      "bin";
-    return `${basename}.${extension}`;
-  }
-
-  // Sanitize filename
-  return basename.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
-
-// Download function with retry logic
-async function downloadWithRetry(
-  url: string,
-  filePath: string,
-  options: {
-    maxRetries: number;
-    timeout: number;
-    chunkSize: number;
-    validateContentType: boolean;
-    allowedContentTypes: string[];
-    logger: any;
-    jobId?: string;
-    targetLanguage?: string;
-    retryConfig?: {
-      maxAttempts: number;
-      minTimeoutInMs: number;
-      maxTimeoutInMs: number;
-      factor: number;
-      randomize: boolean;
-    };
-  }
-): Promise<DownloadTaskOutput> {
-  const {
-    maxRetries,
-    timeout,
-    chunkSize,
-    validateContentType,
-    allowedContentTypes,
-    logger,
-    jobId,
-    targetLanguage,
-    retryConfig,
-  } = options;
-  let attempt = 0;
-
-  while (attempt <= maxRetries) {
-    attempt++;
-    console.log(`Download attempt ${attempt}/${maxRetries + 1}`, {
-      url,
-      filePath,
-    });
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-      const response = await fetch(url, {
-        method: "GET",
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "Trigger.dev-DownloadTask/1.0",
-        },
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      // Validate content type if required
-      const contentType =
-        response.headers.get("content-type")?.split(";")[0] || "";
-      if (validateContentType && !allowedContentTypes.includes(contentType)) {
-        throw new Error(`Content type not allowed: ${contentType}`);
-      }
-
-      // Get file size
-      const contentLength = parseInt(
-        response.headers.get("content-length") || "0",
-        10
-      );
-
-      console.log("Download request successful", {
-        status: response.status,
-        contentType,
-        contentLength,
-        headers: Object.fromEntries(response.headers.entries()),
-      });
-
-      // Create write stream and start download
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-
-      // Write to file (in Node.js environment)
-      const fs = await import("fs/promises");
-      await fs.writeFile(filePath, buffer);
-
-      const fileSize = buffer.length;
-
-      console.log("File downloaded successfully", {
-        filePath,
-        fileSize,
-        contentType,
-        contentLength,
-        actualSize: fileSize,
-      });
-
-      return {
-        success: true,
-        filename: filePath.split("/").pop() || "downloaded_file",
-        filePath,
-        fileSize,
-        contentType,
-        downloadTime: 0, // Will be set by caller
-        retries: attempt - 1,
-        metadata: {
-          etag: response.headers.get("etag") || undefined,
-          lastModified: response.headers.get("last-modified") || undefined,
-          contentLength,
-          url,
-          downloadedAt: new Date().toISOString(),
-        },
-      };
-    } catch (error) {
-      console.error(`Download attempt ${attempt} failed`, {
-        error: error instanceof Error ? error.message : error,
-        url,
-        attempt,
-      });
-
-      // Emit progress event if jobId is provided
-      if (jobId) {
-        await renderService
-          .addEvent(
-            jobId,
-            "job_progress",
-            "transcribing",
-            "transcribing",
-            {
-              type: "download_retry",
-              url,
-              attempt,
-              maxAttempts: maxRetries + 1,
-              error: error instanceof Error ? error.message : error,
-            },
-            {
-              severity: "warning",
-              category: "processing",
-              tags: ["download", "retry"],
-            }
-          )
-          .catch((eventError) => {
-            console.warn("Failed to emit download retry event", { eventError });
-          });
-      }
-
-      // If this is the last attempt, re-throw the error
-      if (attempt > maxRetries) {
-        throw error;
-      }
-
-      // Calculate language-specific exponential backoff delay
-      const baseDelay = retryConfig?.minTimeoutInMs || 1000;
-      const maxDelay = retryConfig?.maxTimeoutInMs || 30000;
-      const factor = retryConfig?.factor || 2;
-      const randomize = retryConfig?.randomize || true;
-
-      let delay = Math.min(baseDelay * Math.pow(factor, attempt - 1), maxDelay);
-
-      // Add randomization if enabled
-      if (randomize) {
-        delay = delay * (0.8 + Math.random() * 0.4); // ±20% variation
-      }
-
-      console.log(`Waiting ${delay}ms before retry`, {
-        attempt,
-        delay,
-        targetLanguage,
-        baseDelay,
-        maxDelay,
-      });
-
-      await wait.for({ seconds: delay / 1000 });
-    }
-  }
-
-  throw new Error("Maximum retry attempts exceeded");
-}

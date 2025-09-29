@@ -152,6 +152,14 @@ export interface RenderInput {
     timeout?: number;
     priority?: 'low' | 'normal' | 'high';
   };
+  downloadConfig?: {
+    enabled?: boolean;
+    url?: string;
+    filename?: string;
+    maxRetries?: number;
+    timeout?: number;
+    validateContentType?: boolean;
+  };
 }
 
 export interface RenderOutput {
@@ -208,8 +216,8 @@ export class RenderService {
 
   // Status state machine
   private readonly STATUS_FLOW: Record<JobStatus, JobStatus[]> = {
-    'queued': ['transcribing', 'failed'],
-    'transcribing': ['translating', 'failed'],
+    'queued': ['transcribing', 'rendering', 'failed'],
+    'transcribing': ['translating', 'rendering', 'failed'],
     'translating': ['rendering', 'failed'],
     'rendering': ['uploading', 'failed'],
     'uploading': ['done', 'failed'],
@@ -290,10 +298,29 @@ export class RenderService {
       await this.updateJobStatus(jobId, status, phase, details);
     }
 
+    // Save to persistent storage when events are added
+    if (type !== 'job_progress' && status === job.status) {
+      this.saveJobToPersistentStorage(jobId).catch(error => {
+        console.error(`Failed to save job after adding event for ${jobId}:`, error);
+      });
+    }
+
     return event;
   }
 
   // Helper methods for progress and status management
+  private async saveJobToPersistentStorage(jobId: string): Promise<void> {
+    const job = this.jobs.get(jobId);
+    if (!job) return;
+
+    try {
+      await this.persistentStorage.saveJob(job);
+    } catch (error) {
+      console.error(`Failed to save job ${jobId} to persistent storage:`, error);
+      // Don't throw - continue with in-memory storage
+    }
+  }
+
   private updateJobProgress(jobId: string, progress: number, phase: ProcessingPhase, message: string): void {
     const job = this.jobs.get(jobId);
     if (!job) return;
@@ -313,6 +340,11 @@ export class RenderService {
     };
 
     job.updatedAt = now;
+
+    // Save to persistent storage
+    this.saveJobToPersistentStorage(jobId).catch(error => {
+      console.error(`Failed to save job progress for ${jobId}:`, error);
+    });
   }
 
   private updateJobStatus(jobId: string, newStatus: JobStatus, newPhase: ProcessingPhase, details: Record<string, any>): void {
@@ -362,6 +394,11 @@ export class RenderService {
         tags: ['status_change', 'phase_transition']
       }
     ).catch(console.error);
+
+    // Save to persistent storage
+    this.saveJobToPersistentStorage(jobId).catch(error => {
+      console.error(`Failed to save job status for ${jobId}:`, error);
+    });
   }
 
   private calculatePhaseProgress(phase: ProcessingPhase, overallProgress: number): number {
@@ -595,10 +632,16 @@ export class RenderService {
       timeoutAt: new Date(now.getTime() + timeout)
     };
 
-    // Save to persistent storage
-    await this.persistentStorage.saveJob(job);
+    // Save to persistent storage with error handling
+    try {
+      await this.persistentStorage.saveJob(job);
+      console.log(`[RenderService] Job ${jobId} saved to persistent storage`);
+    } catch (error) {
+      console.error(`[RenderService] Failed to save job ${jobId} to persistent storage:`, error);
+      // Don't throw here - we still want to continue with in-memory storage
+    }
 
-    // Update in-memory cache
+    // Always update in-memory cache
     this.jobs.set(jobId, job);
     this.eventHistory.set(jobId, []);
 
@@ -631,19 +674,27 @@ export class RenderService {
   async getJob(id: string): Promise<RenderJob | null> {
     console.log(`[RenderService] Getting job ${id}`);
 
-    // Try persistent storage first
-    try {
-      const persistentJob = await this.persistentStorage.getJob(id);
-      if (persistentJob) {
-        console.log(`[RenderService] Found job ${id} in persistent storage`);
-        // Update in-memory cache for faster access
-        this.jobs.set(id, persistentJob);
-        return persistentJob;
-      } else {
-        console.log(`[RenderService] Job ${id} not found in persistent storage`);
+    // Try persistent storage first with retry mechanism
+    let persistentJob: RenderJob | null = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        persistentJob = await this.persistentStorage.getJob(id);
+        if (persistentJob) {
+          console.log(`[RenderService] Found job ${id} in persistent storage (attempt ${attempt})`);
+          // Update in-memory cache for faster access
+          this.jobs.set(id, persistentJob);
+          return persistentJob;
+        } else {
+          console.log(`[RenderService] Job ${id} not found in persistent storage (attempt ${attempt})`);
+        }
+      } catch (error) {
+        console.error(`[RenderService] Error getting job ${id} from persistent storage (attempt ${attempt}):`, error);
       }
-    } catch (error) {
-      console.error(`[RenderService] Error getting job ${id} from persistent storage:`, error);
+
+      // If not found and this isn't the last attempt, wait before retrying
+      if (attempt < 3) {
+        await new Promise(resolve => setTimeout(resolve, 500 * attempt)); // 500ms, 1000ms delays
+      }
     }
 
     // Fall back to in-memory storage (for backward compatibility)
@@ -652,6 +703,8 @@ export class RenderService {
       console.log(`[RenderService] Found job ${id} in memory cache`);
     } else {
       console.log(`[RenderService] Job ${id} not found in memory cache`);
+      console.log(`[RenderService] Total jobs in memory cache: ${this.jobs.size}`);
+      console.log(`[RenderService] Available job IDs:`, Array.from(this.jobs.keys()));
     }
     return memoryJob;
   }
