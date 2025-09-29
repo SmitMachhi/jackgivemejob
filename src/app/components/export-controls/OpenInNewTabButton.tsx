@@ -1,14 +1,19 @@
 "use client";
 
+import { useCallback } from "react";
+
 interface OpenInNewTabButtonProps {
   videoUrl: string | null;
   processingStatus: string | null;
 }
 
-export function OpenInNewTabButton({ videoUrl, processingStatus }: OpenInNewTabButtonProps) {
+export function OpenInNewTabButton({
+  videoUrl,
+  processingStatus,
+}: OpenInNewTabButtonProps) {
   const handleOpenInNewTab = useCallback(() => {
     if (videoUrl) {
-      window.open(videoUrl, '_blank');
+      window.open(videoUrl, "_blank");
     }
   }, [videoUrl]);
 

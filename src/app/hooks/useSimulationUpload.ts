@@ -1,27 +1,33 @@
+/* eslint-disable no-unused-vars */
 "use client";
 
-export function useSimulationUpload() {
-  const simulateUpload = useCallback((
-    setProgress: (progress: number | null) => void,
-    setUploading: (uploading: boolean) => void,
-    onUploadComplete: () => void
-  ) => {
-    setUploading(true);
-    setProgress(0);
+import { useCallback } from "react";
 
-    const uploadInterval = setInterval(() => {
-      setProgress(prev => {
-        if (prev === null) return 0;
-        if (prev >= 100) {
+export function useSimulationUpload() {
+  const simulateUpload = useCallback(
+    (
+      setProgress: (progress: number) => void,
+      setUploading: (uploading: boolean) => void,
+      onUploadComplete: () => void
+    ) => {
+      setUploading(true);
+      setProgress(0);
+
+      let currentProgress = 0;
+      const uploadInterval = setInterval(() => {
+        currentProgress += 20;
+        if (currentProgress >= 100) {
           clearInterval(uploadInterval);
           setUploading(false);
+          setProgress(100);
           onUploadComplete();
-          return 100;
+        } else {
+          setProgress(currentProgress);
         }
-        return prev + 20;
-      });
-    }, 100);
-  }, []);
+      }, 100);
+    },
+    []
+  );
 
   return { simulateUpload };
 }

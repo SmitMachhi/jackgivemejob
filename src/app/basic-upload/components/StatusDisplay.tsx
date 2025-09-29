@@ -3,7 +3,7 @@
 interface StatusDisplayProps {
   status: string | null;
   jobId: string | null;
-  result: any;
+  result: Record<string, unknown> | null;
 }
 
 export function StatusDisplay({ status, jobId, result }: StatusDisplayProps) {
@@ -27,7 +27,9 @@ export function StatusDisplay({ status, jobId, result }: StatusDisplayProps) {
 
       {result && (
         <div className="mt-4 p-4 bg-gray-100 rounded-md">
-          <h3 className="font-medium text-gray-900 mb-2">Processing Details:</h3>
+          <h3 className="font-medium text-gray-900 mb-2">
+            Processing Details:
+          </h3>
           <pre className="text-xs text-gray-700 overflow-auto">
             {JSON.stringify(result, null, 2)}
           </pre>

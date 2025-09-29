@@ -5,7 +5,7 @@ import { LanguageOption } from "../LanguageSelector";
 interface LanguageOptionItemProps {
   option: LanguageOption;
   isSelected: boolean;
-  onSelect: (code: string) => void;
+  onSelect: () => void;
 }
 
 export function LanguageOptionItem({ option, isSelected, onSelect }: LanguageOptionItemProps) {
@@ -14,7 +14,7 @@ export function LanguageOptionItem({ option, isSelected, onSelect }: LanguageOpt
       <a
         onClick={(e) => {
           e.preventDefault();
-          onSelect(option.code);
+          onSelect();
         }}
         className={`justify-between ${isSelected ? "active" : ""}`}
       >

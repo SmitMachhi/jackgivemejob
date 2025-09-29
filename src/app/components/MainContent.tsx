@@ -6,14 +6,14 @@ interface MainContentProps {
   selectedFile: File | null;
   videoUrl: string | null;
   selectedLanguage: string;
-  setSelectedLanguage: (lang: string) => void;
-  setIsDragOver: (isDragOver: boolean) => void;
+  setSelectedLanguage: () => void;
+  setIsDragOver: () => void;
   uploadHandlers: {
     fileInputRef: React.RefObject<HTMLInputElement | null>;
     handleDragOver: () => void;
     handleDragLeave: () => void;
     handleDrop: () => void;
-    handleFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    handleFileSelect: () => void;
     handleClickUpload: () => void;
     handleDeleteFile: () => void;
   };

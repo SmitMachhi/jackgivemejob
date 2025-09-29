@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 export function useDragState() {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -17,6 +17,6 @@ export function useDragState() {
     isDragOver,
     setIsDragOver,
     handleSetDragOver,
-    handleSetDragLeave
+    handleSetDragLeave,
   };
 }

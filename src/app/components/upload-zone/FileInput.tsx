@@ -2,7 +2,7 @@
 
 interface FileInputProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
-  onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onFileSelect: () => void;
 }
 
 export function FileInput({ fileInputRef, onFileSelect }: FileInputProps) {
@@ -11,9 +11,8 @@ export function FileInput({ fileInputRef, onFileSelect }: FileInputProps) {
       ref={fileInputRef}
       type="file"
       accept="video/*"
-      onChange={(e) => {
-    e.preventDefault();
-    onFileSelect(e);
+      onChange={() => {
+    onFileSelect();
   }}
       className="hidden"
     />

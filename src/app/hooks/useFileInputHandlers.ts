@@ -3,7 +3,7 @@
 import { useCallback, useRef } from "react";
 
 interface UseFileInputHandlersProps {
-  onFileSelected: (file: File) => void;
+  onFileSelected: () => void;
   onFileDeleted: () => void;
 }
 
@@ -13,11 +13,8 @@ export function useFileInputHandlers({
 }: UseFileInputHandlersProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      onFileSelected(files[0]);
-    }
+  const handleFileSelect = useCallback(() => {
+    onFileSelected();
   }, [onFileSelected]);
 
   const handleClickUpload = useCallback(() => {

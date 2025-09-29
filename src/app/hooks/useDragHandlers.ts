@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 
-export function useDragHandlers(onFileSelected: (file: File) => void) {
+export function useDragHandlers() {
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
   }, []);
@@ -13,14 +13,7 @@ export function useDragHandlers(onFileSelected: (file: File) => void) {
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      const file = files[0];
-      if (file.type.startsWith("video/")) {
-        onFileSelected(file);
-      }
-    }
-  }, [onFileSelected]);
+  }, []);
 
   return {
     handleDragOver,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+
 import { useUploadProgress } from "./useUploadProgress";
 import { useProcessingStatus } from "./useProcessingStatus";
 import { useRealProcessing } from "./useRealProcessing";
@@ -8,7 +9,7 @@ import { useSimulatedProcessing } from "./useSimulatedProcessing";
 
 export function useProcessingLogic() {
   const { uploadProgress, isUploading, resetProgress } = useUploadProgress();
-  const { processingStatus, currentJobId, statusCheckInterval, resetStatus } = useProcessingStatus();
+  const { processingStatus, currentJobId, resetStatus } = useProcessingStatus();
   const { startRealProcessing } = useRealProcessing();
   const { simulateProcessing } = useSimulatedProcessing();
 

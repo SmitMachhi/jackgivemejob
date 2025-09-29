@@ -8,10 +8,10 @@ interface UploadZoneProps {
   isDragOver: boolean;
   selectedFile: File | null;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
-  onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent) => void;
-  onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onDragOver: () => void;
+  onDragLeave: () => void;
+  onDrop: () => void;
+  onFileSelect: () => void;
   onClick: () => void;
   onDeleteFile: () => void;
   uploadProgress: number | null;

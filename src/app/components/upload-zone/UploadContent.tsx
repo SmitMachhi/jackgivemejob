@@ -20,7 +20,7 @@ export function UploadContent({
 }: UploadContentProps) {
   return (
     <div className="card-body p-6">
-      <FileChip file={selectedFile} onDelete={onDeleteFile} />
+      <FileChip file={selectedFile!} onDelete={onDeleteFile} />
       {isUploading && uploadProgress !== null && (
         <ProgressBar progress={uploadProgress} onCancel={onCancelUpload} />
       )}
