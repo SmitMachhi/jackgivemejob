@@ -2,15 +2,15 @@
  * Font Setup Script
  * This script generates placeholder font files and downloads actual fonts from Google Fonts
  *
- * Run with: node public/fonts/setup-fonts.js
+ * Run with: node public/fonts/setup-fonts.mjs
  */
 
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
+import fs from 'fs';
+import path from 'path';
+import https from 'https';
 
 const FONT_DIR = path.join(__dirname, '.');
-const FONT_CONFIG = require('./font-config.json');
+const FONT_CONFIG = JSON.parse(fs.readFileSync('./font-config.json', 'utf8'));
 
 // Font URLs for direct download
 const FONT_URLS = {
@@ -108,6 +108,36 @@ function createPlaceholderFile(filename, description) {
   console.log(`Created placeholder: ${filename} (${description})`);
 }
 
+function createFontIndex() {
+  const fontIndex = {
+    setupDate: new Date().toISOString(),
+    totalFonts: Object.keys(FONT_CONFIG.fontFiles).length,
+    supportedLanguages: Object.keys(FONT_CONFIG.supportedLanguages),
+    availableFiles: fs.readdirSync(FONT_DIR).filter(file => file.endsWith('.ttf') || file.endsWith('.woff2')),
+    configuration: FONT_CONFIG
+  };
+
+  fs.writeFileSync(
+    path.join(FONT_DIR, 'font-index.json'),
+    JSON.stringify(fontIndex, null, 2)
+  );
+
+  return fontIndex;
+}
+
+function logSetupComplete(fontIndex) {
+  console.log('\n✅ Font setup complete!');
+  console.log(`📁 Font directory: ${FONT_DIR}`);
+  console.log(`📊 Total fonts configured: ${Object.keys(FONT_CONFIG.fontFiles).length}`);
+  console.log(`🌍 Supported languages: ${Object.keys(FONT_CONFIG.supportedLanguages).length}`);
+  console.log(`📄 Available font files: ${fontIndex.availableFiles.length}`);
+
+  console.log('\n🚀 Next steps:');
+  console.log('1. Font files are ready for use with FFmpeg');
+  console.log('2. Update FFmpeg commands to use language-specific fonts');
+  console.log('3. Test font rendering with different languages');
+}
+
 async function setupFonts() {
   console.log('🎨 Setting up fonts for multi-language support...\n');
 
@@ -139,34 +169,13 @@ async function setupFonts() {
     console.error('Download failed, using placeholders:', error.message);
   }
 
-  // Create font index file
-  const fontIndex = {
-    setupDate: new Date().toISOString(),
-    totalFonts: Object.keys(FONT_CONFIG.fontFiles).length,
-    supportedLanguages: Object.keys(FONT_CONFIG.supportedLanguages),
-    availableFiles: fs.readdirSync(FONT_DIR).filter(file => file.endsWith('.ttf') || file.endsWith('.woff2')),
-    configuration: FONT_CONFIG
-  };
-
-  fs.writeFileSync(
-    path.join(FONT_DIR, 'font-index.json'),
-    JSON.stringify(fontIndex, null, 2)
-  );
-
-  console.log('\n✅ Font setup complete!');
-  console.log(`📁 Font directory: ${FONT_DIR}`);
-  console.log(`📊 Total fonts configured: ${Object.keys(FONT_CONFIG.fontFiles).length}`);
-  console.log(`🌍 Supported languages: ${Object.keys(FONT_CONFIG.supportedLanguages).length}`);
-  console.log(`📄 Available font files: ${fontIndex.availableFiles.length}`);
-
-  console.log('\n🚀 Next steps:');
-  console.log('1. Font files are ready for use with FFmpeg');
-  console.log('2. Update FFmpeg commands to use language-specific fonts');
-  console.log('3. Test font rendering with different languages');
+  const fontIndex = createFontIndex();
+  logSetupComplete(fontIndex);
 }
 
-if (require.main === module) {
+// Check if this is the main module
+if (import.meta.url === `file://${process.argv[1]}`) {
   setupFonts().catch(console.error);
 }
 
-module.exports = { setupFonts, downloadFont, createPlaceholderFile };
+export { setupFonts, downloadFont, createPlaceholderFile };
