@@ -31,7 +31,8 @@
       "Bash(npx trigger.dev@latest dev:*)",
       "Bash(npx trigger.dev@latest env:list:*)",
       "mcp__trigger__list_orgs",
-      "mcp__trigger__deploy"
+      "mcp__trigger__deploy",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
