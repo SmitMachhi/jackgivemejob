@@ -4,7 +4,7 @@ import { useDragHandlers } from "./useDragHandlers";
 import { useFileInputHandlers } from "./useFileInputHandlers";
 
 interface UseUploadHandlersProps {
-  onFileSelected: () => void;
+  onFileSelected: (file: File) => void;
   onFileDeleted: () => void;
 }
 

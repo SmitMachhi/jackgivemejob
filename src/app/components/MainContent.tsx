@@ -3,17 +3,18 @@
 import { MainContentSection } from "./MainContentSection";
 
 interface MainContentProps {
+  isDragOver: boolean;
   selectedFile: File | null;
   videoUrl: string | null;
   selectedLanguage: string;
-  setSelectedLanguage: () => void;
-  setIsDragOver: () => void;
+  setSelectedLanguage: (language: string) => void;
+  setIsDragOver: (value: boolean) => void;
   uploadHandlers: {
     fileInputRef: React.RefObject<HTMLInputElement | null>;
-    handleDragOver: () => void;
-    handleDragLeave: () => void;
-    handleDrop: () => void;
-    handleFileSelect: () => void;
+    handleDragOver: (e: React.DragEvent) => void;
+    handleDragLeave: (e: React.DragEvent) => void;
+    handleDrop: (e: React.DragEvent) => void;
+    handleFileSelect: (file: File) => void;
     handleClickUpload: () => void;
     handleDeleteFile: () => void;
   };

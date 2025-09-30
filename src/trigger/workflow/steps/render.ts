@@ -1,6 +1,6 @@
 import { logger, wait } from "@trigger.dev/sdk/v3";
 
-import { CaptionsResult, RenderResult, VideoMetadata } from "../types";
+import { CaptionsResult, RenderResult, VideoMetadata } from "../types/types";
 
 async function executeWorkflowStep<T>(
   jobId: string,

@@ -34,7 +34,8 @@
       "mcp__trigger__deploy",
       "Bash(cat:*)",
       "Bash(del:*)",
-      "Bash(npm run lint:*)"
+      "Bash(npm run lint:*)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []

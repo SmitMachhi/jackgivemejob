@@ -1,40 +1,37 @@
 import { logger } from "@trigger.dev/sdk/v3";
+import { readFileSync } from "fs";
 
 import {
   RenderWorkflowInput,
   WorkflowResult,
   VideoMetadata,
-} from "../types";
-import {
-  downloadVideoFromR2,
-  validateVideoMetadata,
-  transcribeVideo,
-  generateCaptions,
-  renderFinalVideo,
-  uploadProcessedVideo,
-} from "../steps";
+} from "../types/types";
+import { downloadVideoFromR2 } from "../steps/download";
+import { validateVideoMetadata } from "../steps/probe";
+import { transcribeVideo } from "../steps/transcribe";
+import { generateCaptions } from "../steps/captions";
+import { renderFinalVideo } from "../steps/render";
+import { uploadProcessedVideo } from "../steps/upload";
 
 async function executeWorkflowSteps(
   payload: RenderWorkflowInput
 ): Promise<{
-  videoBuffer: Buffer;
   videoMetadata: VideoMetadata;
   finalUrl: string;
 }> {
-  const videoBuffer = await downloadVideoFromR2(
+  const downloadResult = await downloadVideoFromR2(
     payload.jobId,
     payload.r2Key
   );
 
   const videoMetadata = await validateVideoMetadata(
     payload.jobId,
-    videoBuffer
+    downloadResult.filePath
   );
 
   const transcriptionResult = await transcribeVideo(
     payload.jobId,
-    videoBuffer,
-    videoMetadata
+    downloadResult.filePath
   );
 
   const captions = await generateCaptions(
@@ -43,6 +40,7 @@ async function executeWorkflowSteps(
     payload.targetLang
   );
 
+  const videoBuffer = readFileSync(downloadResult.filePath);
   const renderedVideo = await renderFinalVideo(
     payload.jobId,
     videoBuffer,
@@ -56,7 +54,6 @@ async function executeWorkflowSteps(
   );
 
   return {
-    videoBuffer,
     videoMetadata,
     finalUrl,
   };

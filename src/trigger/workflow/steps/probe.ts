@@ -3,7 +3,7 @@ import { existsSync } from "fs";
 
 import { logger } from "@trigger.dev/sdk/v3";
 
-import { VideoMetadata, ProbeErrorCodes } from "../types";
+import { VideoMetadata, ProbeErrorCodes } from "../types/types";
 
 const MAX_DURATION_SECONDS = 10.2;
 const SUPPORTED_VIDEO_CODECS = ["h264", "hevc", "vp9", "av1"];
@@ -43,10 +43,7 @@ async function emitProbeError(
 }
 
 class VideoValidationError extends Error {
-  constructor(
-    public readonly code: keyof ProbeErrorCodes,
-    message: string
-  ) {
+  constructor(public readonly code: keyof ProbeErrorCodes, message: string) {
     super(message);
     this.name = "VideoValidationError";
   }
@@ -77,7 +74,8 @@ async function extractVideoMetadata(filePath: string): Promise<VideoMetadata> {
     }
 
     const fps = videoStream.r_frame_rate
-      ? parseFloat(videoStream.r_frame_rate.split("/")[0]) / parseFloat(videoStream.r_frame_rate.split("/")[1])
+      ? parseFloat(videoStream.r_frame_rate.split("/")[0]) /
+        parseFloat(videoStream.r_frame_rate.split("/")[1])
       : undefined;
 
     const metadata = {

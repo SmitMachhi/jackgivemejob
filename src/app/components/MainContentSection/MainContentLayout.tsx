@@ -9,7 +9,7 @@ interface MainContentLayoutProps {
   selectedFile: File | null;
   videoUrl: string | null;
   selectedLanguage: string;
-  setSelectedLanguage: () => void;
+  setSelectedLanguage: (language: string) => void;
   uploadHandlers: Record<string, unknown>;
   uploadProgress: number | null;
   isUploading: boolean;
@@ -17,9 +17,9 @@ interface MainContentLayoutProps {
   handleCancelUpload: () => void;
   resetAll: () => void;
   handlers: {
-    handleDragOver: () => void;
-    handleDragLeave: () => void;
-    handleDrop: () => void;
+    handleDragOver: (e: React.DragEvent) => void;
+    handleDragLeave: (e: React.DragEvent) => void;
+    handleDrop: (e: React.DragEvent) => void;
     handleRenderClick: () => void;
   };
 }

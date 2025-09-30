@@ -5,15 +5,15 @@ import { LanguageSelector } from "../LanguageSelector";
 
 interface UploadSectionProps {
   selectedLanguage: string;
-  setSelectedLanguage: () => void;
+  setSelectedLanguage: (language: string) => void;
   uploadHandlers: Record<string, unknown>;
   uploadProgress: number | null;
   isUploading: boolean;
   handleCancelUpload: () => void;
   handlers: {
-    handleDragOver: () => void;
-    handleDragLeave: () => void;
-    handleDrop: () => void;
+    handleDragOver: (e: React.DragEvent) => void;
+    handleDragLeave: (e: React.DragEvent) => void;
+    handleDrop: (e: React.DragEvent) => void;
   };
 }
 
@@ -38,7 +38,7 @@ export function UploadSection({
           onDragOver={handlers.handleDragOver}
           onDragLeave={handlers.handleDragLeave}
           onDrop={handlers.handleDrop}
-          onFileSelect={uploadHandlers.handleFileSelect as () => void}
+          onFileSelect={uploadHandlers.handleFileSelect as (file: File) => void}
           onClick={uploadHandlers.handleClickUpload as () => void}
           onDeleteFile={uploadHandlers.handleDeleteFile as () => void}
           uploadProgress={uploadProgress}

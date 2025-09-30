@@ -29,6 +29,19 @@ export interface TranscriptionResult {
     text: string;
   }>;
   language: string;
+  wpm?: number;
+  words?: Array<{
+    word: string;
+    start: number;
+    end: number;
+    confidence?: number;
+  }>;
+}
+
+export interface TranscriptionErrorCodes {
+  NOT_ENGLISH: "not_english";
+  TRANSCRIPTION_FAILED: "transcription_failed";
+  AUDIO_EXTRACTION_FAILED: "audio_extraction_failed";
 }
 
 export interface CaptionsResult {

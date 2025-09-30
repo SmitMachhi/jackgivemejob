@@ -7,8 +7,8 @@ interface MainContentSectionProps {
   selectedFile: File | null;
   videoUrl: string | null;
   selectedLanguage: string;
-  setSelectedLanguage: () => void;
-  setIsDragOver: () => void;
+  setSelectedLanguage: (language: string) => void;
+  setIsDragOver: (value: boolean) => void;
   uploadHandlers: Record<string, unknown>;
   uploadProgress: number | null;
   isUploading: boolean;

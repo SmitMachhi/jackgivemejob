@@ -18,7 +18,7 @@ export const languageOptions: LanguageOption[] = [
 
 interface LanguageSelectorProps {
   selectedLanguage: string;
-  onLanguageChange: () => void;
+  onLanguageChange: (language: string) => void;
   className?: string;
 }
 
