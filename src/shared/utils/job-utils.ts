@@ -46,3 +46,44 @@ export function getJobProgressColor(job: JobStatus): string {
   if (job.status === "processing") return "text-blue-600";
   return "text-gray-600";
 }
+
+// Utility functions for job management
+export function getClientIP(request: Request): string {
+  return (request.headers.get('x-forwarded-for') ||
+          request.headers.get('x-real-ip') ||
+          'unknown').split(',')[0].trim();
+}
+
+export function generateJobId(): string {
+  return `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Simple in-memory stores for active jobs
+const activeJobs = new Map<string, { ip: string; timestamp: number }>();
+
+export function addActiveJob(jobId: string, ip: string): void {
+  activeJobs.set(jobId, { ip, timestamp: Date.now() });
+}
+
+export function removeActiveJob(jobId: string): void {
+  activeJobs.delete(jobId);
+}
+
+export function checkConcurrencyLimits(ip: string): { valid: boolean; error?: string } {
+  const MAX_CONCURRENT_JOBS = 3;
+  const activeJobsByIp = Array.from(activeJobs.values()).filter(job => job.ip === ip);
+
+  if (activeJobsByIp.length >= MAX_CONCURRENT_JOBS) {
+    return { valid: false, error: `Maximum ${MAX_CONCURRENT_JOBS} concurrent jobs allowed per IP` };
+  }
+
+  return { valid: true };
+}
+
+export function getActiveJobsDebug(): Array<{ jobId: string; ip: string; timestamp: number }> {
+  return Array.from(activeJobs.entries()).map(([jobId, job]) => ({
+    jobId,
+    ip: job.ip,
+    timestamp: job.timestamp
+  }));
+}

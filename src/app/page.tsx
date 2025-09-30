@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import { useFileState } from "./hooks/useFileState";
 import { useUploadHandlers } from "./hooks/useUploadHandlers";
 import { useProcessingLogic } from "./hooks/useProcessingLogic";
@@ -24,6 +25,10 @@ export default function Home() {
     processingStatus,
     handleCancelUpload,
     handleRenderSubtitles,
+    handleUploadComplete,
+    handleRetry,
+    pendingFile,
+    uploadState
   } = useProcessingLogic();
 
   const uploadHandlers = useUploadHandlers({
@@ -32,6 +37,32 @@ export default function Home() {
       handleFileDeleted();
     },
   });
+
+  // Handler for when user clicks render button
+  const handleRenderClick = useCallback(async () => {
+    if (selectedFile && selectedLanguage) {
+      try {
+        await handleRenderSubtitles(selectedFile, selectedLanguage);
+      } catch (error) {
+        console.error("Error rendering subtitles:", error);
+      }
+    }
+  }, [selectedFile, selectedLanguage, handleRenderSubtitles]);
+
+  // Handler for when UploadThing upload completes
+  const handleUploadThingComplete = useCallback(async (fileData: {
+    key: string;
+    size: number;
+    mime: string;
+    url: string;
+    name: string;
+  }) => {
+    try {
+      await handleUploadComplete(fileData);
+    } catch (error) {
+      console.error("Error in upload completion:", error);
+    }
+  }, [handleUploadComplete]);
 
   return (
     <MainContent
@@ -45,8 +76,12 @@ export default function Home() {
       uploadProgress={uploadProgress}
       isUploading={isUploading}
       processingStatus={processingStatus}
-      handleRenderSubtitles={handleRenderSubtitles}
+      handleRenderSubtitles={handleRenderClick}
       handleCancelUpload={handleCancelUpload}
+      handleUploadThingComplete={handleUploadThingComplete}
+      handleRetry={handleRetry}
+      pendingFile={pendingFile}
+      uploadState={uploadState}
       resetAll={resetAll}
     />
   );

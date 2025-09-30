@@ -23,6 +23,29 @@ interface MainContentProps {
   processingStatus: string | null;
   handleRenderSubtitles: () => void;
   handleCancelUpload: () => void;
+  handleUploadThingComplete: (fileData: {
+    key: string;
+    size: number;
+    mime: string;
+    url: string;
+    name: string;
+  }) => void;
+  handleRetry: () => void;
+  pendingFile: { file: File; targetLanguage: string } | null;
+  uploadState: {
+    isUploading: boolean;
+    uploadProgress: number;
+    fileMetadata: {
+      key: string;
+      size: number;
+      mime: string;
+      url: string;
+      name: string;
+    } | null;
+    error: string | null;
+    retryCount: number;
+    isRetrying: boolean;
+  };
   resetAll: () => void;
 }
 

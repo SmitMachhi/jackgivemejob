@@ -15,6 +15,29 @@ interface MainContentLayoutProps {
   isUploading: boolean;
   processingStatus: string | null;
   handleCancelUpload: () => void;
+  handleUploadThingComplete: (fileData: {
+    key: string;
+    size: number;
+    mime: string;
+    url: string;
+    name: string;
+  }) => void;
+  handleRetry: () => void;
+  pendingFile: { file: File; targetLanguage: string } | null;
+  uploadState: {
+    isUploading: boolean;
+    uploadProgress: number;
+    fileMetadata: {
+      key: string;
+      size: number;
+      mime: string;
+      url: string;
+      name: string;
+    } | null;
+    error: string | null;
+    retryCount: number;
+    isRetrying: boolean;
+  };
   resetAll: () => void;
   handlers: {
     handleDragOver: (e: React.DragEvent) => void;
@@ -34,6 +57,10 @@ export function MainContentLayout({
   isUploading,
   processingStatus,
   handleCancelUpload,
+  handleUploadThingComplete,
+  handleRetry,
+  pendingFile,
+  uploadState,
   resetAll,
   handlers,
 }: MainContentLayoutProps) {
@@ -48,6 +75,10 @@ export function MainContentLayout({
         uploadProgress={uploadProgress}
         isUploading={isUploading}
         handleCancelUpload={handleCancelUpload}
+        handleUploadThingComplete={handleUploadThingComplete}
+        handleRetry={handleRetry}
+        pendingFile={pendingFile}
+        uploadState={uploadState}
         handlers={handlers}
       />
 

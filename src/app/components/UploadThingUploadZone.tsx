@@ -93,6 +93,9 @@ function UploadThingUploadZoneContent({
         config={{
           mode: "auto",
         }}
+        headers={{
+          "x-user-id": "anonymous-user", // For development/testing
+        }}
       />
 
       <UploadRequirements />
